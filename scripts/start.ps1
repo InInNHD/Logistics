@@ -523,7 +523,8 @@ function Assert-FlywayHistory(
     [string]$Password,
     [string]$HistoryTable,
     [string]$DomainPrefix,
-    [string[]]$AllowedVersionKeys
+    [string[]]$AllowedVersionKeys,
+    [string[]]$AllowedRepeatableDescriptions = @()
 ) {
     if ($HistoryTable -notmatch '^[a-z_]+$' -or $DomainPrefix -notmatch '^[a-z_]+$') { throw '内部 Flyway 校验参数无效。' }
     $tableCheck = Invoke-MySql $MySqlExe $DbHost $DbPort $Username $Password $Database "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = '$Database' AND TABLE_NAME = '$HistoryTable';"
@@ -536,12 +537,16 @@ function Assert-FlywayHistory(
         return
     }
 
-    $history = Invoke-MySql $MySqlExe $DbHost $DbPort $Username $Password $Database "SELECT COALESCE(version, '<repeatable>'), success FROM $HistoryTable ORDER BY installed_rank;"
+    $history = Invoke-MySql $MySqlExe $DbHost $DbPort $Username $Password $Database "SELECT COALESCE(version, '<repeatable>'), description, success FROM $HistoryTable ORDER BY installed_rank;"
     if ($history.ExitCode -ne 0) { throw "无法读取 $HistoryTable。" }
     $versions = @()
     foreach ($line in @($history.Output -split "`r?`n" | Where-Object { $_ })) {
         $columns = @($line -split "`t")
-        if ($columns.Count -ne 2 -or $columns[1] -ne '1') { throw "$HistoryTable 包含失败或格式异常的迁移记录。" }
+        if ($columns.Count -ne 3 -or $columns[2] -ne '1') { throw "$HistoryTable 包含失败或格式异常的迁移记录。" }
+        if ($columns[0] -eq '<repeatable>') {
+            if ($AllowedRepeatableDescriptions -notcontains $columns[1]) { throw "$HistoryTable 包含当前脚本不支持的可重复迁移。" }
+            continue
+        }
         if ($columns[0] -notmatch '^\d+$') { throw "$HistoryTable 包含当前脚本不支持的迁移版本。" }
         $versions += $columns[0]
     }
@@ -580,7 +585,8 @@ function Assert-DatabaseMode(
 
     Assert-FlywayHistory $MySqlExe $DbHost $DbPort $Database $Username $Password 'flyway_auth_schema_history' 'sys_' @('', '1', '1,2', '1,2,3', '1,2,3,4', '1,2,3,4,5', '0,1', '0,1,2', '0,1,2,3', '0,1,2,3,4', '0,1,2,3,4,5')
     $warehouseAllowed = if ($DataMode -eq 'Demo') { @('', '1', '1,2', '1,2,3', '0,1', '0,1,2', '0,1,2,3') } else { @('', '1', '1,3', '0,1', '0,1,3') }
-    Assert-FlywayHistory $MySqlExe $DbHost $DbPort $Database $Username $Password 'flyway_warehouse_schema_history' 'wms_' $warehouseAllowed
+    $warehouseRepeatables = if ($DataMode -eq 'Demo') { @('seed public orders') } else { @() }
+    Assert-FlywayHistory $MySqlExe $DbHost $DbPort $Database $Username $Password 'flyway_warehouse_schema_history' 'wms_' $warehouseAllowed $warehouseRepeatables
 }
 
 function Get-ApplicationJar([string]$Module) {

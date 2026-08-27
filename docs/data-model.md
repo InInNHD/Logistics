@@ -184,7 +184,10 @@ V3 新增或强化的索引包括：
 
 - 默认 location `classpath:db/migration`：`V1` 核心结构和 `V3` 幂等/约束强化；
 - `demo` Profile 额外加入 `classpath:db/demo`，其中 `V2__seed_demo_master_data.sql` 插入演示仓库、货位、商品、合作方和库存；
+- `demo/R__seed_public_orders.sql` 以可重复、幂等方式加入 8 张 UCI Online Retail II 真实匿名交易、40 条商品明细和国内快递服务商资料。订单来源为 [UCI Online Retail II](https://archive.ics.uci.edu/dataset/502/online%2Bretail)（DOI `10.24432/C5CG6D`，CC BY 4.0）；仅平移演示时间和分配 WMS 状态，原始发票号、时间、国家和金额保留在备注中；
 - `application-demo.yml` 负责组合这两个 locations；完整 Docker Compose 明确启用 `demo`，默认/`prod` 不会播种演示数据。
+
+国内物流服务供应商的全国客服热线来自各公司官网：中通 `95311`、圆通 `95554`、韵达 `95546`、申通 `95543`、顺丰 `95338`。它们复用当前合作方 `SUPPLIER` 类型，不包含个人网点或面单信息。
 
 版本号不要求文件在同一目录连续；全新 Demo 模块会在可选 V0 基线之后，按所有已配置 locations 的版本排序执行 `V1 → V2 → V3`。生产必须只扫描默认迁移目录。Demo Profile 应在空库首次迁移前确定：若数据库已经按默认模式执行到 V3，之后才启用 demo，V2 属于低于当前版本的 out-of-order 迁移，默认不会补跑；此时应通过 API 创建数据或使用新的受控高版本 seed，而不是修改 Flyway 历史。
 

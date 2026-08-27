@@ -102,7 +102,7 @@ docker compose up --build -d
 
 - 认证服务：`V1` 创建用户表，`V2` 增加失败次数和锁定时间，`V3` 增加管理员集合并发保护锁。
 - 仓储服务默认迁移：`V1` 创建核心结构，`V3` 增加幂等表、索引、外键和数量/状态检查约束。
-- 演示主数据位于 `db/demo/V2`，仅 `demo` Profile 加载；完整 Compose 启用 demo，Railway `prod` 不播种演示数据。
+- 演示数据仅由 `demo` Profile 加载：`db/demo/V2` 提供基础资料，可重复迁移 `R__seed_public_orders.sql` 提供 8 张 UCI CC BY 4.0 真实匿名零售订单及中通、圆通、韵达、申通、顺丰服务商资料；Railway `prod` 不播种演示数据。
 - 两个服务使用独立的 Flyway 历史表；后启动的一方会写入版本 `0` 的基线标记，然后仍从 V1 执行自己的迁移。V0 不是业务迁移，也不会跳过 V1；迁移只能追加，不能修改已经执行的版本。
 
 如果旧数据库已经登记原默认位置的仓储 V2，不要直接对其执行新构件或随意 `flyway repair`：应保留匹配旧历史的构件，或备份并迁移数据后重建新库，避免 missing/checksum 错误。详见[数据模型](docs/data-model.md)。

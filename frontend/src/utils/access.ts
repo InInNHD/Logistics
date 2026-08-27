@@ -13,8 +13,13 @@ export function hasAnyRole(userRoles: readonly string[], requiredRoles?: readonl
   return requiredRoles.map(normalizeRole).some((role) => roles.has(role))
 }
 
-export function readStoredRoles(storage: Pick<Storage, 'getItem'> = localStorage): string[] {
-  const raw = storage.getItem('firefly_user')
+export function readStoredRoles(
+  storage?: Pick<Storage, 'getItem'>,
+  fallbackStorage?: Pick<Storage, 'getItem'>,
+): string[] {
+  const primary = storage || localStorage
+  const fallback = fallbackStorage || (storage ? undefined : sessionStorage)
+  const raw = primary.getItem('firefly_user') || fallback?.getItem('firefly_user')
   if (!raw) return []
   try {
     const parsed = JSON.parse(raw) as { roles?: unknown; role?: unknown }

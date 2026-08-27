@@ -19,5 +19,9 @@ describe('role access', () => {
   it('reads persisted roles without trusting malformed JSON', () => {
     expect(readStoredRoles({ getItem: () => '{invalid' })).toEqual([])
     expect(readStoredRoles({ getItem: () => JSON.stringify({ role: 'PICKER' }) })).toEqual(['PICKER'])
+    expect(readStoredRoles(
+      { getItem: () => null },
+      { getItem: () => JSON.stringify({ roles: ['RECEIVER'] }) },
+    )).toEqual(['RECEIVER'])
   })
 })

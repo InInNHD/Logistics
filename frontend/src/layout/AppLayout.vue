@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  Bell, Box, DataAnalysis, Expand, Fold, Goods, House, Operation, Setting, SwitchButton,
+  Bell, Box, DataAnalysis, Document, Expand, Fold, Goods, House, Operation, Setting, SwitchButton,
   Van,
 } from '@element-plus/icons-vue'
 import FireflyMark from '@/components/FireflyMark.vue'
@@ -24,8 +24,7 @@ function closeMobileNav() {
 }
 
 async function logout() {
-  auth.signOut()
-  await router.replace('/login')
+  try { await auth.signOut() } finally { await router.replace('/login') }
 }
 </script>
 
@@ -43,6 +42,7 @@ async function logout() {
         <div v-if="can(['WAREHOUSE_MANAGER']) || can(['ADMIN'])" class="nav-label"><span>系统配置</span></div>
         <router-link v-if="can(['WAREHOUSE_MANAGER'])" to="/master-data" class="nav-item" @click="closeMobileNav"><el-icon><House /></el-icon><span>基础资料</span></router-link>
         <router-link v-if="can(['ADMIN'])" to="/users" class="nav-item" @click="closeMobileNav"><el-icon><Setting /></el-icon><span>用户与权限</span></router-link>
+        <router-link v-if="can(['ADMIN'])" to="/audit-events" class="nav-item" @click="closeMobileNav"><el-icon><Document /></el-icon><span>认证审计</span></router-link>
       </nav>
       <div class="sidebar-foot">
         <div class="system-state"><span class="pulse" /><span>所有服务运行正常</span></div>

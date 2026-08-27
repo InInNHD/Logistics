@@ -24,6 +24,8 @@ spring:
                 allowedHeaders: "*"
                 allowCredentials: true
 firefly:
+  auth-service-url: ${AUTH_SERVICE_URL:http://localhost:8081}
+  token-status-check-enabled: ${TOKEN_STATUS_CHECK_ENABLED:true}
   jwt:
     secret: ${JWT_SECRET:firefly-logistics-change-this-jwt-secret-in-production}
     issuer: ${JWT_ISSUER:firefly-logistics}

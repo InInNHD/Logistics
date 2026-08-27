@@ -5,6 +5,8 @@ import com.firefly.auth.domain.UserRole;
 import com.firefly.auth.domain.SecurityGuard;
 import com.firefly.auth.repository.SecurityGuardRepository;
 import com.firefly.auth.repository.UserAccountRepository;
+import com.firefly.auth.repository.AuthAuditRepository;
+import com.firefly.auth.domain.AuthAuditEvent;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
@@ -25,11 +27,14 @@ public class UserManagementService {
     private final UserAccountRepository repository;
     private final SecurityGuardRepository guardRepository;
     private final PasswordEncoder encoder;
+    private final AuthAuditRepository audit;
 
-    public UserManagementService(UserAccountRepository repository, SecurityGuardRepository guardRepository, PasswordEncoder encoder) {
+    public UserManagementService(UserAccountRepository repository, SecurityGuardRepository guardRepository,
+                                 PasswordEncoder encoder, AuthAuditRepository audit) {
         this.repository = repository;
         this.guardRepository = guardRepository;
         this.encoder = encoder;
+        this.audit = audit;
     }
 
     @Transactional(readOnly = true)
@@ -63,7 +68,9 @@ public class UserManagementService {
                 case "ACTIVE", "ENABLED" -> specification.and((root, query, builder) -> builder.and(
                         builder.isTrue(root.get("enabled")),
                         builder.or(builder.isNull(root.get("lockedUntil")), builder.lessThanOrEqualTo(root.get("lockedUntil"), now))));
-                case "DISABLED", "INACTIVE" -> specification.and((root, query, builder) -> builder.isFalse(root.get("enabled")));
+                case "DISABLED", "INACTIVE" -> specification.and((root, query, builder) -> builder.and(
+                        builder.isFalse(root.get("enabled")), builder.isFalse(root.get("registrationPending"))));
+                case "PENDING" -> specification.and((root, query, builder) -> builder.isTrue(root.get("registrationPending")));
                 case "LOCKED" -> specification.and((root, query, builder) -> builder.and(
                         builder.isTrue(root.get("enabled")), builder.greaterThan(root.get("lockedUntil"), now)));
                 default -> throw ManagementException.badRequest("不支持的用户状态：" + status);
@@ -91,9 +98,28 @@ public class UserManagementService {
         UserAccount user = new UserAccount(normalizedUsername, encoder.encode(password), displayName.trim(), roleCode);
         if (!enabled) user.updateProfile(null, null, false);
         try {
-            return toView(repository.saveAndFlush(user), LocalDateTime.now());
+            UserView created = toView(repository.saveAndFlush(user), LocalDateTime.now());
+            audit.save(new AuthAuditEvent("USER_CREATED", normalizedUsername, true, "管理员创建账号"));
+            return created;
         } catch (DataIntegrityViolationException exception) {
             throw ManagementException.conflict("用户名已存在");
+        }
+    }
+
+    @Transactional
+    public void register(String username, String password, String displayName) {
+        String normalizedUsername = username == null ? "" : username.trim();
+        if (repository.existsByUsernameIgnoreCase(normalizedUsername)) {
+            throw ManagementException.conflict("用户名已被使用");
+        }
+        validatePassword(password);
+        UserAccount user = new UserAccount(normalizedUsername, encoder.encode(password), displayName.trim(), "RECEIVER");
+        user.requestRegistrationApproval();
+        try {
+            repository.saveAndFlush(user);
+            audit.save(new AuthAuditEvent("REGISTRATION", normalizedUsername, true, "提交账号申请"));
+        } catch (DataIntegrityViolationException exception) {
+            throw ManagementException.conflict("用户名已被使用");
         }
     }
 
@@ -123,7 +149,9 @@ public class UserManagementService {
             validatePassword(password);
             user.resetPassword(encoder.encode(password));
         }
-        return toView(repository.save(user), LocalDateTime.now());
+        UserView updated = toView(repository.save(user), LocalDateTime.now());
+        audit.save(new AuthAuditEvent("USER_UPDATED", user.getUsername(), true, "管理员更新账号"));
+        return updated;
     }
 
     @Transactional(readOnly = true)
@@ -132,6 +160,17 @@ public class UserManagementService {
         return Arrays.stream(UserRole.values())
                 .map(role -> new RoleView(role.code(), role.displayName(), role.scope()))
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public PageResult<AuditView> auditEvents(Long operatorId, int page, int size) {
+        requireActiveAdmin(operatorId, false);
+        int safePage = Math.max(page, 1);
+        int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
+        var result = audit.findAll(PageRequest.of(safePage - 1, safeSize, Sort.by(Sort.Direction.DESC, "createdAt")));
+        return new PageResult<>(result.getContent().stream().map(event -> new AuditView(event.getId(),
+                        event.getEventType(), event.getUsername(), event.isSuccess(), event.getDetail(), event.getCreatedAt())).toList(),
+                result.getTotalElements(), safePage, safeSize);
     }
 
     private String resolveRole(String role, List<String> roles, boolean required) {
@@ -160,7 +199,7 @@ public class UserManagementService {
         };
     }
 
-    private void validatePassword(String password) {
+    static void validatePassword(String password) {
         if (password == null || password.length() < 8 || password.length() > 72
                 || !password.matches(".*[a-z].*") || !password.matches(".*[A-Z].*")
                 || !password.matches(".*\\d.*") || !password.matches(".*[^A-Za-z0-9].*")) {
@@ -169,7 +208,8 @@ public class UserManagementService {
     }
 
     private UserView toView(UserAccount user, LocalDateTime now) {
-        String status = !user.isEnabled() ? "DISABLED" : user.isLocked(now) ? "LOCKED" : "ACTIVE";
+        String status = user.isRegistrationPending() ? "PENDING"
+                : !user.isEnabled() ? "DISABLED" : user.isLocked(now) ? "LOCKED" : "ACTIVE";
         String role = UserRole.parse(user.getRole()).code();
         return new UserView(user.getId(), user.getUsername(), user.getDisplayName(), role,
                 List.of(role), status, user.isEnabled(), user.getFailedLoginAttempts(),
@@ -200,6 +240,8 @@ public class UserManagementService {
                            String status, boolean enabled, int failedLoginAttempts,
                            LocalDateTime lockedUntil, LocalDateTime createdAt) {}
     public record RoleView(String code, String name, String scope) {}
+    public record AuditView(Long id, String eventType, String username, boolean success,
+                            String detail, LocalDateTime createdAt) {}
 
     public static final class ManagementException extends RuntimeException {
         private final int status;

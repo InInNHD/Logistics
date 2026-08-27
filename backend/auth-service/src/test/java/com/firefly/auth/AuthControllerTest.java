@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.firefly.auth.domain.UserAccount;
 import com.firefly.auth.repository.UserAccountRepository;
+import com.firefly.common.security.JwtService;
+import com.firefly.common.security.TokenClaims;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,6 +28,7 @@ class AuthControllerTest {
     @Autowired ObjectMapper objectMapper;
     @Autowired UserAccountRepository repository;
     @Autowired PasswordEncoder encoder;
+    @Autowired JwtService jwtService;
 
     @BeforeEach void resetAdminLock() {
         repository.findByUsername("admin").ifPresent(user -> {
@@ -38,6 +41,32 @@ class AuthControllerTest {
     @Test void logsInWithSeededAdmin() throws Exception {
         mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON).content("{\"username\":\"admin\",\"password\":\"Firefly@123\"}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.code").value(0)).andExpect(jsonPath("$.data.accessToken").isNotEmpty());
+    }
+
+    @Test void registrationCreatesDisabledAccountPendingAdminApproval() throws Exception {
+        String username = "applicant_" + System.nanoTime();
+        mvc.perform(post("/api/auth/register").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + username + "\",\"displayName\":\"新员工\",\"password\":\"Strong@123\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("申请已提交")));
+
+        UserAccount applicant = repository.findByUsername(username).orElseThrow();
+        assertFalse(applicant.isEnabled());
+        assertEquals("RECEIVER", applicant.getRole());
+        mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + username + "\",\"password\":\"Strong@123\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test void logoutRevokesTokenAndWritesAudit() throws Exception {
+        String token = login("admin", "Firefly@123");
+        TokenClaims claims = jwtService.parse(token);
+        mvc.perform(post("/api/auth/logout").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/auth/token-status").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new TokenStatusPayload(claims.userId(), claims.role(), claims.tokenId()))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").value(false));
     }
 
     @Test void returnsUnifiedValidationErrors() throws Exception {
@@ -175,4 +204,5 @@ class AuthControllerTest {
     }
 
     private record LoginPayload(String username, String password) {}
+    private record TokenStatusPayload(Long userId, String role, String tokenId) {}
 }

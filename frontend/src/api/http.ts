@@ -9,7 +9,7 @@ const http = axios.create({
 })
 
 http.interceptors.request.use((config) => {
-  const token = localStorage.getItem('firefly_token')
+  const token = localStorage.getItem('firefly_token') || sessionStorage.getItem('firefly_token')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
@@ -34,6 +34,8 @@ http.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('firefly_token')
       localStorage.removeItem('firefly_user')
+      sessionStorage.removeItem('firefly_token')
+      sessionStorage.removeItem('firefly_user')
       if (router.currentRoute.value.path !== '/login') {
         await router.replace({ path: '/login', query: { redirect: router.currentRoute.value.fullPath } })
       }

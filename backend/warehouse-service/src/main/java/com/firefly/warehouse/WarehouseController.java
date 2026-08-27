@@ -143,6 +143,16 @@ class WarehouseController {
         return ApiResponse.ok("库存移库成功", result);
     }
 
+    @PostMapping("/inventory/stocktakes")
+    ApiResponse<InventoryView> stocktake(
+            @Valid @RequestBody StocktakeRequest request,
+            @RequestHeader(name = "X-Username", defaultValue = "system") String operator,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey) {
+        InventoryView result = idempotency.execute(idempotencyKey, "STOCKTAKE_INVENTORY", request,
+                InventoryView.class, () -> service.stocktake(request, operator));
+        return ApiResponse.ok("盘点差异已入账", result);
+    }
+
     @GetMapping("/outbound-orders")
     ApiResponse<PageResult<OutboundView>> outboundOrders(
             @RequestParam(name = "keyword", required = false) String keyword,
@@ -179,5 +189,45 @@ class WarehouseController {
         OutboundView result = idempotency.execute(idempotencyKey, "SHIP_OUTBOUND", id,
                 OutboundView.class, () -> service.ship(id, operator));
         return ApiResponse.ok("发运成功，库存已扣减", result);
+    }
+
+    @PostMapping("/outbound-orders/{id}/pick")
+    ApiResponse<OutboundView> pick(
+            @PathVariable(name = "id") Long id,
+            @RequestHeader(name = "X-Username", defaultValue = "system") String operator,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey) {
+        OutboundView result = idempotency.execute(idempotencyKey, "PICK_OUTBOUND", id,
+                OutboundView.class, () -> service.pick(id, operator));
+        return ApiResponse.ok("拣货完成", result);
+    }
+
+    @PostMapping("/outbound-orders/{id}/pack")
+    ApiResponse<OutboundView> pack(
+            @PathVariable(name = "id") Long id,
+            @RequestHeader(name = "X-Username", defaultValue = "system") String operator,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey) {
+        OutboundView result = idempotency.execute(idempotencyKey, "PACK_OUTBOUND", id,
+                OutboundView.class, () -> service.pack(id, operator));
+        return ApiResponse.ok("复核包装完成", result);
+    }
+
+    @PostMapping("/outbound-orders/{id}/cancel")
+    ApiResponse<OutboundView> cancel(
+            @PathVariable(name = "id") Long id,
+            @RequestHeader(name = "X-Username", defaultValue = "system") String operator,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey) {
+        OutboundView result = idempotency.execute(idempotencyKey, "CANCEL_OUTBOUND", id,
+                OutboundView.class, () -> service.cancel(id, operator));
+        return ApiResponse.ok("出库单已取消，库存预占已释放", result);
+    }
+
+    @PostMapping("/outbound-orders/{id}/return")
+    ApiResponse<OutboundView> returnShipment(
+            @PathVariable(name = "id") Long id,
+            @RequestHeader(name = "X-Username", defaultValue = "system") String operator,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey) {
+        OutboundView result = idempotency.execute(idempotencyKey, "RETURN_OUTBOUND", id,
+                OutboundView.class, () -> service.returnShipment(id, operator));
+        return ApiResponse.ok("退货完成，库存已恢复", result);
     }
 }

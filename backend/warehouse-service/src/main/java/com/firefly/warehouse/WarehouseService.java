@@ -163,7 +163,9 @@ class WarehouseService {
     @Transactional
     InboundView receive(Long id, ReceiveRequest request, String operator) {
         InboundOrderEntity order = inboundOrders.lockById(id).orElseThrow(() -> notFound("入库单不存在"));
-        if (!"PENDING".equals(order.status)) throw conflict("只有待收货单据可以收货");
+        if (!Set.of("PENDING", "PARTIALLY_RECEIVED").contains(order.status)) {
+            throw conflict("只有待收货或部分收货单据可以继续收货");
+        }
         requireActiveWarehouse(order.warehouseId);
         requireActivePartner(order.supplierId, "SUPPLIER", "入库单供应商不可用");
 
@@ -172,24 +174,38 @@ class WarehouseService {
         requireActive(location.status, "收货库位");
         Map<Long, ProductEntity> productMap = activeProducts(order.items.stream().map(e -> e.productId).toList());
 
+        Map<Long, Long> requested = request == null || request.items() == null || request.items().isEmpty()
+                ? Map.of()
+                : request.items().stream().collect(java.util.stream.Collectors.toMap(
+                        ReceiveLineRequest::itemId, ReceiveLineRequest::quantity,
+                        (left, right) -> { throw bad("收货明细不能重复"); }));
         List<InboundItemEntity> sortedItems = order.items.stream()
+                .filter(item -> item.receivedQuantity < item.quantity)
+                .filter(item -> requested.isEmpty() || requested.containsKey(item.id))
                 .sorted(Comparator.comparing((InboundItemEntity e) -> e.productId).thenComparing(e -> e.batchNo))
                 .toList();
+        if (!requested.isEmpty() && sortedItems.size() != requested.size()) throw bad("收货明细不属于该入库单");
+        long receivedNow = 0;
         for (InboundItemEntity item : sortedItems) {
             requireFromMap(productMap, item.productId, "商品不存在");
+            long remaining = item.quantity - item.receivedQuantity;
+            long quantity = requested.isEmpty() ? remaining : requested.get(item.id);
+            if (quantity <= 0 || quantity > remaining) throw conflict("收货数量必须大于 0 且不能超过待收数量");
             InventoryBalanceEntity balance = lockedBalance(order.warehouseId, location.id, item.productId,
                     item.batchNo, item.expiryDate);
             mergeExpiry(balance, item.expiryDate);
-            balance.quantity += item.quantity;
+            balance.quantity += quantity;
             inventory.save(balance);
-            item.receivedQuantity = item.quantity;
+            item.receivedQuantity += quantity;
+            receivedNow += quantity;
             movement("INBOUND_RECEIPT", order.warehouseId, location.id, item.productId, item.batchNo,
-                    item.quantity, "INBOUND_ORDER", order.id, "入库单确认收货", operator);
+                    quantity, "INBOUND_ORDER", order.id, "入库单确认收货", operator);
         }
         inventory.flush();
-        order.receivedQuantity = order.totalQuantity;
-        order.status = "RECEIVED";
-        order.receivedAt = LocalDateTime.now();
+        order.receivedQuantity += receivedNow;
+        boolean completed = order.receivedQuantity.equals(order.totalQuantity);
+        order.status = completed ? "RECEIVED" : "PARTIALLY_RECEIVED";
+        if (completed) order.receivedAt = LocalDateTime.now();
         return inboundView(order);
     }
 
@@ -269,6 +285,23 @@ class WarehouseService {
         return inventoryView(destination);
     }
 
+    @Transactional
+    InventoryView stocktake(StocktakeRequest request, String operator) {
+        // ponytail: 单库存维度即时盘点；需要多人复核时再升级为盘点单与范围冻结。
+        InventoryBalanceEntity balance = inventory.lockById(request.inventoryId())
+                .orElseThrow(() -> notFound("库存明细不存在"));
+        if (balance.allocatedQuantity > 0 || balance.lockedQuantity > 0) {
+            throw conflict("存在已分配或冻结数量，不能盘点该库存");
+        }
+        long difference = request.actualQuantity() - balance.quantity;
+        if (difference == 0) throw bad("实盘数量与账面数量一致，无需调整");
+        balance.quantity = request.actualQuantity();
+        inventory.saveAndFlush(balance);
+        movement("STOCKTAKE", balance.warehouseId, balance.locationId, balance.productId, balance.batchNo,
+                difference, "INVENTORY", balance.id, defaultText(request.reason(), "库存盘点差异"), operator);
+        return inventoryView(balance);
+    }
+
     PageResult<OutboundView> outboundOrders(String keyword, String status, int page, int size) {
         Page<OutboundOrderEntity> result = outboundOrders.search(query(keyword), query(status), pageable(page, size));
         List<OutboundOrderEntity> loaded = loadOutboundItems(result.getContent());
@@ -346,9 +379,56 @@ class WarehouseService {
     }
 
     @Transactional
+    OutboundView pick(Long id, String operator) {
+        OutboundOrderEntity order = outboundOrders.lockById(id).orElseThrow(() -> notFound("出库单不存在"));
+        if (!"ALLOCATED".equals(order.status)) throw conflict("只有已分配单据可以确认拣货");
+        order.status = "PICKED";
+        movement("OUTBOUND_PICKED", order.warehouseId, null, order.items.get(0).productId, "", 0,
+                "OUTBOUND_ORDER", order.id, "出库单确认拣货", operator);
+        return outboundView(order);
+    }
+
+    @Transactional
+    OutboundView pack(Long id, String operator) {
+        OutboundOrderEntity order = outboundOrders.lockById(id).orElseThrow(() -> notFound("出库单不存在"));
+        if (!"PICKED".equals(order.status)) throw conflict("只有已拣货单据可以确认复核包装");
+        order.status = "PACKED";
+        movement("OUTBOUND_PACKED", order.warehouseId, null, order.items.get(0).productId, "", 0,
+                "OUTBOUND_ORDER", order.id, "出库单复核包装完成", operator);
+        return outboundView(order);
+    }
+
+    @Transactional
+    OutboundView cancel(Long id, String operator) {
+        OutboundOrderEntity order = outboundOrders.lockById(id).orElseThrow(() -> notFound("出库单不存在"));
+        if (!Set.of("PENDING", "ALLOCATED", "PICKED", "PACKED").contains(order.status)) {
+            throw conflict("当前状态不能取消出库单");
+        }
+        if (!"PENDING".equals(order.status)) {
+            Map<Long, OutboundItemEntity> items = index(order.items);
+            for (OutboundAllocationEntity allocation : allocations.findByOrderIdOrderByInventoryIdAscIdAsc(order.id)) {
+                if (allocation.shipped) throw conflict("已发运的出库单不能取消");
+                InventoryBalanceEntity balance = inventory.lockById(allocation.inventoryId)
+                        .orElseThrow(() -> conflict("已分配库存不存在"));
+                if (balance.allocatedQuantity < allocation.quantity) throw conflict("库存预占数量异常");
+                balance.allocatedQuantity -= allocation.quantity;
+                requireFromMap(items, allocation.orderItemId, "出库明细不存在").allocatedQuantity -= allocation.quantity;
+            }
+            order.allocatedQuantity = 0L;
+            inventory.flush();
+        }
+        order.status = "CANCELLED";
+        movement("OUTBOUND_CANCELLED", order.warehouseId, null, order.items.get(0).productId, "", 0,
+                "OUTBOUND_ORDER", order.id, "取消出库单并释放预占", operator);
+        return outboundView(order);
+    }
+
+    @Transactional
     OutboundView ship(Long id, String operator) {
         OutboundOrderEntity order = outboundOrders.lockById(id).orElseThrow(() -> notFound("出库单不存在"));
-        if (!"ALLOCATED".equals(order.status)) throw conflict("只有已分配单据可以发运");
+        if (!Set.of("ALLOCATED", "PICKED", "PACKED").contains(order.status)) {
+            throw conflict("只有已分配、已拣货或已包装单据可以发运");
+        }
         requireActiveWarehouse(order.warehouseId);
         requireActivePartner(order.customerId, "CUSTOMER", "出库单客户不可用");
         activeProducts(order.items.stream().map(e -> e.productId).toList());
@@ -379,6 +459,27 @@ class WarehouseService {
         order.shippedQuantity = order.totalQuantity;
         order.status = "SHIPPED";
         order.shippedAt = LocalDateTime.now();
+        return outboundView(order);
+    }
+
+    @Transactional
+    OutboundView returnShipment(Long id, String operator) {
+        OutboundOrderEntity order = outboundOrders.lockById(id).orElseThrow(() -> notFound("出库单不存在"));
+        if (!"SHIPPED".equals(order.status)) throw conflict("只有已发运单据可以整单退回");
+        Map<Long, OutboundItemEntity> items = index(order.items);
+        for (OutboundAllocationEntity allocation : allocations.findByOrderIdOrderByInventoryIdAscIdAsc(order.id)) {
+            if (!allocation.shipped) continue;
+            InventoryBalanceEntity balance = inventory.lockById(allocation.inventoryId)
+                    .orElseThrow(() -> conflict("原发运库存不存在"));
+            balance.quantity += allocation.quantity;
+            allocation.shipped = false;
+            requireFromMap(items, allocation.orderItemId, "出库明细不存在").shippedQuantity -= allocation.quantity;
+            movement("OUTBOUND_RETURN", balance.warehouseId, balance.locationId, balance.productId,
+                    balance.batchNo, allocation.quantity, "OUTBOUND_ORDER", order.id, "客户退回整单入库", operator);
+        }
+        inventory.flush();
+        order.shippedQuantity = 0L;
+        order.status = "RETURNED";
         return outboundView(order);
     }
 

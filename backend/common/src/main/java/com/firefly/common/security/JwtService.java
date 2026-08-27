@@ -41,10 +41,11 @@ public final class JwtService {
 
     public String create(TokenClaims claims) {
         Instant now = Instant.now();
+        String tokenId = claims.tokenId() == null || claims.tokenId().isBlank() ? UUID.randomUUID().toString() : claims.tokenId();
         return Jwts.builder()
                 .issuer(issuer)
                 .audience().add(audience).and()
-                .id(UUID.randomUUID().toString())
+                .id(tokenId)
                 .subject(claims.username())
                 .claim("uid", claims.userId())
                 .claim("role", claims.role())
@@ -65,6 +66,7 @@ public final class JwtService {
         if (claims.getId() == null || claims.getId().isBlank()) {
             throw new IllegalArgumentException("JWT id is required");
         }
-        return new TokenClaims(claims.get("uid", Long.class), claims.getSubject(), claims.get("role", String.class));
+        return new TokenClaims(claims.get("uid", Long.class), claims.getSubject(), claims.get("role", String.class),
+                claims.getId(), claims.getExpiration().toInstant());
     }
 }

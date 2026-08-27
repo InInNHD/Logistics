@@ -17,7 +17,7 @@ export interface PageQuery {
   keyword?: string
 }
 
-export type UserStatus = 'ACTIVE' | 'DISABLED'
+export type UserStatus = 'ACTIVE' | 'DISABLED' | 'PENDING'
 
 export type AppRole =
   | 'ADMIN'
@@ -207,6 +207,11 @@ export interface CreateInboundOrderRequest {
   items: OrderLineRequest[]
 }
 
+export interface ReceiveInboundRequest {
+  locationCode?: string
+  items?: Array<{ itemId: number; quantity: number }>
+}
+
 export interface InventoryItem {
   id: number
   warehouseId?: number
@@ -240,6 +245,12 @@ export interface InventoryTransferRequest {
   sourceLocationCode: string
   targetLocationCode: string
   quantity: number
+  reason?: string
+}
+
+export interface InventoryStocktakeRequest {
+  inventoryId: number
+  actualQuantity: number
   reason?: string
 }
 

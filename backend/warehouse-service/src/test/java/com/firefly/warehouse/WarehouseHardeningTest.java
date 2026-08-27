@@ -247,7 +247,7 @@ class WarehouseHardeningTest {
         long inboundId = objectMapper.readTree(inboundFirst).at("/data/id").asLong();
         assertEquals(inboundId, objectMapper.readTree(inboundReplay).at("/data/id").asLong());
 
-        String receiveBody = objectMapper.writeValueAsString(new ReceiveRequest("REC-HARDEN"));
+        String receiveBody = objectMapper.writeValueAsString(new ReceiveRequest("REC-HARDEN", null));
         String receiveKey = unique("receive");
         for (int i = 0; i < 2; i++) {
             mvc.perform(post("/api/inbound-orders/{id}/receive", inboundId)

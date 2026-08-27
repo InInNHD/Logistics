@@ -3,7 +3,7 @@
 ## 1. 通用约定
 
 - 本地网关：`http://localhost:8080`；以下路径均包含 `/api` 前缀。
-- 除 `POST /api/auth/login` 外，业务请求携带 `Authorization: Bearer <JWT>`。
+- 除账号申请、登录和内部令牌状态校验外，业务请求携带 `Authorization: Bearer <JWT>`。
 - JSON 使用 UTF-8；业务时间使用 Asia/Shanghai 本地 ISO 8601 格式（如 `2026-08-18T09:00:00`），页码从 1 开始。
 - 主要列表在数据库侧分页；用户列表 `size` 限制为 1～100，仓储列表限制为 1～200（管理端当前提供到 100）。
 - 浏览器应访问网关或前端反向代理。仓储服务直连 8082 也会验证 JWT 和角色，但生产网络仍不应公开内部服务端口。
@@ -64,6 +64,8 @@ curl -X POST http://localhost:8080/api/auth/login \
 | 方法 | 路径 | 说明 | 权限 |
 | --- | --- | --- | --- |
 | `POST` | `/api/auth/login` | 登录并签发 JWT | 匿名 |
+| `POST` | `/api/auth/register` | 提交待管理员启用的收货员账号申请 | 匿名 |
+| `POST` | `/api/auth/logout` | 撤销当前 JWT | 已认证 |
 | `GET` | `/api/auth/me` | 读取当前数据库用户资料与角色 | 已认证 |
 
 ## 3. 用户与角色 API
@@ -76,8 +78,9 @@ curl -X POST http://localhost:8080/api/auth/login \
 | `POST` | `/api/auth/users` | 新增用户 |
 | `PATCH` | `/api/auth/users/{id}` | 修改姓名、密码、角色或状态 |
 | `GET` | `/api/auth/roles` | 查询角色编码、名称和职责范围 |
+| `GET` | `/api/auth/audit-events` | 分页查询认证审计 |
 
-用户列表参数：`page`、`size`、`keyword`、`status=ACTIVE|DISABLED|LOCKED`、`role`。当前每个用户只能拥有一个角色；请求既兼容 `role`，也兼容仅含一个元素的 `roles`。
+用户列表参数：`page`、`size`、`keyword`、`status=PENDING|ACTIVE|DISABLED|LOCKED`、`role`。当前每个用户只能拥有一个角色；请求既兼容 `role`，也兼容仅含一个元素的 `roles`。
 
 新增用户：
 
@@ -110,12 +113,12 @@ curl -X POST http://localhost:8080/api/auth/login \
 
 | API 能力 | `ADMIN` | `WAREHOUSE_MANAGER` | `RECEIVER` | `PICKER` |
 | --- | :---: | :---: | :---: | :---: |
-| `/api/auth/users*`、`/api/auth/roles` | 读写 |  |  |  |
+| `/api/auth/users*`、`/api/auth/roles`、`/api/auth/audit-events` | 读写 |  |  |  |
 | 所有仓储 `GET` 查询 | ✓ | ✓ | ✓ | ✓ |
 | 基础资料 `POST` | ✓ | ✓ |  |  |
-| `/api/inventory/adjustments`、`/transfers` | ✓ | ✓ |  |  |
+| `/api/inventory/adjustments`、`/transfers`、`/stocktakes` | ✓ | ✓ |  |  |
 | 入库创建、收货 | ✓ | ✓ | ✓ |  |
-| 出库创建、分配、发运 | ✓ | ✓ |  | ✓ |
+| 出库创建、分配、拣货、包装、取消、发运、退货 | ✓ | ✓ |  | ✓ |
 
 `WAREHOUSE_ADMIN` 作为历史兼容角色会被规范化为 `ADMIN`。未知或不受支持的签名角色没有查询权限。Actuator 的公开面仅为 health/info，其余 `/actuator/**` 仅管理员可经网关访问。
 
@@ -131,9 +134,12 @@ curl -X POST http://localhost:8080/api/auth/login \
 | 确认收货 | `POST /api/inbound-orders/{id}/receive` |
 | 库存调整 | `POST /api/inventory/adjustments` |
 | 库存移库 | `POST /api/inventory/transfers` |
+| 库存盘点 | `POST /api/inventory/stocktakes` |
 | 创建出库 | `POST /api/outbound-orders` |
 | 库存分配 | `POST /api/outbound-orders/{id}/allocate` |
+| 拣货、包装、取消 | `POST /api/outbound-orders/{id}/pick|pack|cancel` |
 | 确认发运 | `POST /api/outbound-orders/{id}/ship` |
+| 整单退货 | `POST /api/outbound-orders/{id}/return` |
 
 示例：
 
@@ -188,7 +194,7 @@ curl -X POST http://localhost:8080/api/inbound-orders/1/receive \
 | --- | --- | --- |
 | `GET` | `/api/inbound-orders` | 分页查询入库单，可按 `keyword`、`status` 筛选 |
 | `POST` | `/api/inbound-orders` | 创建入库单及明细，支持幂等 |
-| `POST` | `/api/inbound-orders/{id}/receive` | 整单收货、入账并写流水，支持幂等 |
+| `POST` | `/api/inbound-orders/{id}/receive` | 分批或整单收货、入账并写流水，支持幂等 |
 
 ```json
 {
@@ -207,7 +213,7 @@ curl -X POST http://localhost:8080/api/inbound-orders/1/receive \
 }
 ```
 
-收货请求为 `{"locationCode":"RCV-01"}`；请求体或货位编码可省略，服务端会选择启用的收货位或首个启用货位。当前只支持 `PENDING → RECEIVED` 整单收货。
+收货请求可指定本次实际数量：`{"locationCode":"RCV-01","items":[{"itemId":1,"quantity":40}]}`。`items` 省略时接收所有剩余数量；状态按 `PENDING → PARTIALLY_RECEIVED → RECEIVED` 推进。
 
 ## 9. 库存与流水 API
 
@@ -217,6 +223,7 @@ curl -X POST http://localhost:8080/api/inbound-orders/1/receive \
 | `GET` | `/api/inventory/movements` | 分页查询不可变库存流水 |
 | `POST` | `/api/inventory/adjustments` | 库存增减调整，支持幂等 |
 | `POST` | `/api/inventory/transfers` | 同仓货位移库，支持幂等 |
+| `POST` | `/api/inventory/stocktakes` | 按库存明细登记实盘数量并写差异流水 |
 
 库存余额参数：`page`、`size`、`keyword`、`warehouseId`。流水参数：`page`、`size`、`keyword`、`warehouseId`、`type`；关键字可匹配流水号、SKU/商品、批次、引用类型和操作人。流水结果包含 `movementNo`、`type`、仓库/货位、SKU、批次、带方向数量、业务引用、原因、操作人和时间。
 
@@ -246,7 +253,7 @@ curl -X POST http://localhost:8080/api/inbound-orders/1/receive \
 }
 ```
 
-库存余额区分实物量、可用量、已分配量和锁定量。调整和移库在事务内加锁、校验非负并追加流水。
+库存余额区分实物量、可用量、已分配量和锁定量。调整和移库在事务内加锁、校验非负并追加流水。盘点请求为 `{"inventoryId":18,"actualQuantity":97,"reason":"月度循环盘点"}`；存在已分配或冻结数量时拒绝盘点。
 
 ## 10. 出库 API
 
@@ -255,7 +262,11 @@ curl -X POST http://localhost:8080/api/inbound-orders/1/receive \
 | `GET` | `/api/outbound-orders` | 分页查询出库单，可按 `keyword`、`status` 筛选 |
 | `POST` | `/api/outbound-orders` | 创建出库单及明细，支持幂等 |
 | `POST` | `/api/outbound-orders/{id}/allocate` | 按 FEFO 分配可用库存，支持幂等 |
+| `POST` | `/api/outbound-orders/{id}/pick` | 确认拣货 |
+| `POST` | `/api/outbound-orders/{id}/pack` | 确认复核包装 |
+| `POST` | `/api/outbound-orders/{id}/cancel` | 取消并释放库存预占 |
 | `POST` | `/api/outbound-orders/{id}/ship` | 发运扣减并写流水，支持幂等 |
+| `POST` | `/api/outbound-orders/{id}/return` | 已发运订单整单退回并恢复原库存 |
 
 ```json
 {
@@ -273,8 +284,8 @@ curl -X POST http://localhost:8080/api/inbound-orders/1/receive \
 }
 ```
 
-状态流为 `PENDING → ALLOCATED → SHIPPED`。未指定批次时按 FEFO 分配；已过期库存和停用货位不会参与分配。重复调用应复用原幂等键，不能通过生成新键绕过业务状态机。
+主状态流为 `PENDING → ALLOCATED → PICKED → PACKED → SHIPPED`；待发运状态均可取消并释放预占，已发运订单可整单退回为 `RETURNED`。未指定批次时按 FEFO 分配；已过期库存和停用货位不会参与分配。
 
-## 11. 兼容与待办
+## 11. OpenAPI 与待办
 
-当前 URL 尚未加入版本段，也未生成 OpenAPI 文档。对外集成前建议冻结当前契约并迁移到 `/api/v1/**`。部分收货、取消/释放预占、盘点、冻结、退货、PDA、条码和波次相关接口仍未实现，调用方不应假设存在这些能力。
+认证和仓储服务启用 `SPRINGDOC_ENABLED=true` 时分别在内部端口提供 `/swagger-ui.html` 与 `/v3/api-docs`。生产建议关闭交互 UI。当前 URL 尚未加入版本段；正式对外集成前应冻结契约并迁移到 `/api/v1/**`。质检/上架、部分发运、范围冻结、部分退货、PDA、条码和波次相关接口仍未实现。

@@ -56,9 +56,11 @@ public class AuthConfig {
                         .authenticationEntryPoint((request, response, exception) -> writeError(response, 401, "请先登录"))
                         .accessDeniedHandler((request, response, exception) -> writeError(response, 403, "无权执行该操作")))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/register").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/token-status").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
-                        .requestMatchers("/api/auth/users/**", "/api/auth/roles").hasRole("ADMIN")
+                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                        .requestMatchers("/api/auth/users/**", "/api/auth/roles", "/api/auth/audit-events").hasRole("ADMIN")
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();

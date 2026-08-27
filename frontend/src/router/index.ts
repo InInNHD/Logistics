@@ -11,6 +11,12 @@ const router = createRouter({
       meta: { public: true, title: '登录' },
     },
     {
+      path: '/register',
+      name: 'register',
+      component: () => import('@/views/LoginView.vue'),
+      meta: { public: true, title: '申请账号' },
+    },
+    {
       path: '/',
       component: () => import('@/layout/AppLayout.vue'),
       redirect: '/dashboard',
@@ -51,6 +57,12 @@ const router = createRouter({
           component: () => import('@/views/settings/UsersView.vue'),
           meta: { title: '用户与权限', roles: ['ADMIN'] },
         },
+        {
+          path: 'audit-events',
+          name: 'audit-events',
+          component: () => import('@/views/settings/AuditEventsView.vue'),
+          meta: { title: '认证审计', roles: ['ADMIN'] },
+        },
       ],
     },
     { path: '/:pathMatch(.*)*', component: () => import('@/views/NotFoundView.vue') },
@@ -59,9 +71,9 @@ const router = createRouter({
 
 router.beforeEach((to) => {
   document.title = `${String(to.meta.title || '控制台')} · Firefly Logistics`
-  const token = localStorage.getItem('firefly_token')
+  const token = localStorage.getItem('firefly_token') || sessionStorage.getItem('firefly_token')
   if (!to.meta.public && !token) return { path: '/login', query: { redirect: to.fullPath } }
-  if (to.name === 'login' && token) return '/dashboard'
+  if ((to.name === 'login' || to.name === 'register') && token) return '/dashboard'
   if (token && !to.meta.public && !canAccessRoute(to, readStoredRoles())) return '/dashboard'
   return true
 })

@@ -18,6 +18,8 @@ import type {
   Warehouse,
   InventoryAdjustmentRequest,
   InventoryTransferRequest,
+  InventoryStocktakeRequest,
+  ReceiveInboundRequest,
 } from '@/types'
 
 type Query = Record<string, string | number | boolean | undefined>
@@ -57,8 +59,8 @@ export const warehouseApi = {
   inboundOrders: (params?: Query) => getPage<InboundOrder>('/inbound-orders', params),
   createInboundOrder: async (payload: CreateInboundOrderRequest, idempotencyKey?: string) =>
     unwrap<InboundOrder>(await http.post('/inbound-orders', payload, idempotencyConfig(idempotencyKey))),
-  receiveInbound: async (id: number, idempotencyKey?: string) =>
-    unwrap<InboundOrder>(await http.post(`/inbound-orders/${id}/receive`, {}, idempotencyConfig(idempotencyKey))),
+  receiveInbound: async (id: number, payload: ReceiveInboundRequest = {}, idempotencyKey?: string) =>
+    unwrap<InboundOrder>(await http.post(`/inbound-orders/${id}/receive`, payload, idempotencyConfig(idempotencyKey))),
 
   inventory: (params?: Query) => getPage<InventoryItem>('/inventory', params),
   inventoryMovements: (params?: Query) => getPage<InventoryMovement>('/inventory/movements', params),
@@ -66,12 +68,22 @@ export const warehouseApi = {
     unwrap<InventoryItem>(await http.post('/inventory/adjustments', payload, idempotencyConfig(idempotencyKey))),
   transferInventory: async (payload: InventoryTransferRequest, idempotencyKey?: string) =>
     unwrap<InventoryItem>(await http.post('/inventory/transfers', payload, idempotencyConfig(idempotencyKey))),
+  stocktakeInventory: async (payload: InventoryStocktakeRequest, idempotencyKey?: string) =>
+    unwrap<InventoryItem>(await http.post('/inventory/stocktakes', payload, idempotencyConfig(idempotencyKey))),
 
   outboundOrders: (params?: Query) => getPage<OutboundOrder>('/outbound-orders', params),
   createOutboundOrder: async (payload: CreateOutboundOrderRequest, idempotencyKey?: string) =>
     unwrap<OutboundOrder>(await http.post('/outbound-orders', payload, idempotencyConfig(idempotencyKey))),
   allocateOutbound: async (id: number, idempotencyKey?: string) =>
     unwrap<OutboundOrder>(await http.post(`/outbound-orders/${id}/allocate`, {}, idempotencyConfig(idempotencyKey))),
+  pickOutbound: async (id: number, idempotencyKey?: string) =>
+    unwrap<OutboundOrder>(await http.post(`/outbound-orders/${id}/pick`, {}, idempotencyConfig(idempotencyKey))),
+  packOutbound: async (id: number, idempotencyKey?: string) =>
+    unwrap<OutboundOrder>(await http.post(`/outbound-orders/${id}/pack`, {}, idempotencyConfig(idempotencyKey))),
   shipOutbound: async (id: number, idempotencyKey?: string) =>
     unwrap<OutboundOrder>(await http.post(`/outbound-orders/${id}/ship`, {}, idempotencyConfig(idempotencyKey))),
+  cancelOutbound: async (id: number, idempotencyKey?: string) =>
+    unwrap<OutboundOrder>(await http.post(`/outbound-orders/${id}/cancel`, {}, idempotencyConfig(idempotencyKey))),
+  returnOutbound: async (id: number, idempotencyKey?: string) =>
+    unwrap<OutboundOrder>(await http.post(`/outbound-orders/${id}/return`, {}, idempotencyConfig(idempotencyKey))),
 }

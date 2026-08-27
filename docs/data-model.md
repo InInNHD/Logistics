@@ -45,6 +45,7 @@ erDiagram
 | `display_name` | 显示名称 |
 | `role` | 单一角色：`ADMIN`、`WAREHOUSE_MANAGER`、`RECEIVER` 或 `PICKER` |
 | `enabled` | 是否允许登录 |
+| `registration_pending` | 是否为待管理员审批的公开账号申请 |
 | `failed_login_attempts` | 连续失败次数 |
 | `locked_until` | 锁定截止时间，为空表示未锁定 |
 | `created_at` | 创建时间 |
@@ -55,7 +56,7 @@ erDiagram
 
 固定记录 `ADMIN_SET` 是管理员集合变更的事务锁。所有可能新增、停用或降级管理员的写操作先对该行加悲观锁，再复核操作者和目标用户，从而串行化“至少一名启用管理员”的不变量检查。
 
-JWT 不在数据库持久化。每次签发使用随机 `jti`，网关和仓储服务验证签名、`iss`、`aud`、有效期和 `jti`。当前没有令牌撤销表，因此已签发令牌会持续到过期；紧急处置可轮换密钥，但会使全部会话失效。
+JWT 本体不在数据库持久化。`sys_revoked_token` 保存主动退出令牌的 `jti` 和过期时间；网关通过认证服务同时检查撤销、账号启用/锁定状态和最新角色，过期撤销记录在后续登录或退出时清理。`sys_auth_audit` 记录登录、退出、注册申请和管理员账号变更。
 
 ## 4. 基础资料领域
 
@@ -72,14 +73,14 @@ JWT 不在数据库持久化。每次签发使用随机 `jti`，网关和仓储�
 
 ### 入库
 
-- `wms_inbound_order`：唯一入库单号、仓库、供应商、`PENDING/RECEIVED` 状态、预计到货、总量、实收量、备注和审计时间。
+- `wms_inbound_order`：唯一入库单号、仓库、供应商、`PENDING/PARTIALLY_RECEIVED/RECEIVED` 状态、预计到货、总量、实收量、备注和审计时间。
 - `wms_inbound_item`：入库单、SKU、计划/实收数量、批次和有效期。
 
 确认收货时悲观锁定订单，更新表头/明细实收量，并在同一事务内更新余额和追加流水。
 
 ### 出库
 
-- `wms_outbound_order`：唯一出库单号、仓库、客户、`PENDING/ALLOCATED/SHIPPED` 状态、要求发运时间、总量/分配量/发运量和备注。
+- `wms_outbound_order`：唯一出库单号、仓库、客户、`PENDING/ALLOCATED/PICKED/PACKED/SHIPPED/CANCELLED/RETURNED` 状态、要求发运时间、总量/分配量/发运量和备注。
 - `wms_outbound_item`：SKU、计划量、已分配量、已发运量和可选指定批次。
 - `wms_outbound_allocation`：订单、明细、库存余额及分配数量，记录预占来自哪个库存维度。
 
@@ -117,7 +118,7 @@ allocated_quantity + locked_quantity <= quantity
 
 ### `wms_inventory_movement`
 
-流水记录流水号、类型、仓库、货位、SKU、批次、带方向数量、引用类型/ID、原因、操作人和时间。入库和移入为正数，出库和移出为负数；移库写入 `TRANSFER_OUT` 和 `TRANSFER_IN` 两条流水。V3 为仓库、货位和商品增加外键，并为仓库＋类型＋时间增加索引。
+流水记录流水号、类型、仓库、货位、SKU、批次、带方向数量、引用类型/ID、原因、操作人和时间。入库、退货和移入为正数，出库和移出为负数；盘点只写差异量，移库写入 `TRANSFER_OUT` 和 `TRANSFER_IN` 两条流水。
 
 `GET /api/inventory/movements` 直接分页读取该账本。系统不提供更新或删除流水的 API；未来退货、取消和红冲必须追加反向业务流水。
 
@@ -174,6 +175,8 @@ V3 新增或强化的索引包括：
 - `db/migration/V1__create_auth_schema.sql`：用户表；
 - `db/migration/V2__add_login_protection.sql`：失败次数和锁定时间；
 - `db/migration/V3__add_security_guard.sql`：管理员集合并发保护锁。
+- `db/migration/V4__add_registration_approval.sql`：账号申请审批标志；
+- `db/migration/V5__add_token_revocation_and_auth_audit.sql`：令牌撤销与认证审计。
 
 仓储和认证共用一个 schema，但各自维护历史表。后启动的服务会先写入 Flyway V0 基线标记，再执行自己的 V1；V0 只解决“schema 已被另一服务占用”的历史表初始化，不代表业务结构版本，也不会跳过 V1。
 
@@ -200,4 +203,4 @@ V3 新增或强化的索引包括：
 
 ## 11. 后续模型路线图
 
-仍需新增的模型包括部分收货与质检/上架任务、拣货/复核/包装任务、取消和预占释放、盘点/冻结、退货/红冲、多货主、序列号、单位换算、库容温区、PDA 扫描记录、仓库数据范围、权限点、审计日志和 Outbox 事件。
+仍需新增的模型包括质检/上架任务、部分发运/退货、范围盘点与冻结、多货主、序列号、单位换算、库容温区、PDA 扫描记录、仓库数据范围、权限点和 Outbox 事件。当前盘点复用库存余额和流水，适合单维度即时盘点。

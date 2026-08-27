@@ -125,7 +125,7 @@ onMounted(async () => {
         <div class="toolbar-left">
           <el-input v-model="keyword" :prefix-icon="Search" clearable placeholder="搜索用户名或姓名" class="search-input" @keyup.enter="search" />
           <el-select v-model="role" clearable placeholder="全部角色" class="filter-select"><el-option v-for="item in roleOptions" :key="item.code" :label="item.name" :value="item.code" /></el-select>
-          <el-select v-model="status" clearable placeholder="全部状态" class="filter-select"><el-option label="启用" value="ACTIVE" /><el-option label="锁定" value="LOCKED" /><el-option label="停用" value="DISABLED" /></el-select>
+          <el-select v-model="status" clearable placeholder="全部状态" class="filter-select"><el-option label="待审批" value="PENDING" /><el-option label="启用" value="ACTIVE" /><el-option label="锁定" value="LOCKED" /><el-option label="停用" value="DISABLED" /></el-select>
           <el-button @click="search">查询</el-button>
         </div>
         <span class="muted">共 {{ pagination.total }} 位用户</span>
@@ -136,7 +136,7 @@ onMounted(async () => {
         <el-table-column label="角色" min-width="260"><template #default="scope"><div class="role-list"><el-tag v-for="item in scope.row.roles" :key="item" effect="plain">{{ roleName(item) }}</el-tag></div></template></el-table-column>
         <el-table-column label="状态" width="100"><template #default="scope"><StatusTag :status="scope.row.status" /></template></el-table-column>
         <el-table-column prop="createdAt" label="创建时间" min-width="170" />
-        <el-table-column label="操作" width="150" fixed="right"><template #default="scope"><el-button link type="primary" @click="openEdit(scope.row)">编辑</el-button><el-button link :type="scope.row.status==='ACTIVE'?'danger':'success'" @click="toggleStatus(scope.row)">{{ scope.row.status==='ACTIVE'?'停用':'启用' }}</el-button></template></el-table-column>
+        <el-table-column label="操作" width="170" fixed="right"><template #default="scope"><el-button link type="primary" @click="openEdit(scope.row)">编辑</el-button><el-button link :type="scope.row.status==='ACTIVE'?'danger':'success'" @click="toggleStatus(scope.row)">{{ scope.row.status==='PENDING'?'审批启用':scope.row.status==='ACTIVE'?'停用':'启用' }}</el-button></template></el-table-column>
       </el-table>
       <div class="pagination-wrap"><el-pagination :current-page="pagination.page" :page-size="pagination.size" :page-sizes="[10,20,50,100]" :total="pagination.total" layout="total, sizes, prev, pager, next, jumper" @current-change="changePage" @size-change="changeSize" /></div>
     </section>

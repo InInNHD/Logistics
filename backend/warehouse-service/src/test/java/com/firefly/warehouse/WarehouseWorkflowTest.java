@@ -41,17 +41,53 @@ class WarehouseWorkflowTest {
 
     @Test void completesInboundAllocationAndShipment() {
         InboundView inbound=service.createInbound(new InboundRequest(supplierId,warehouseId,null,"测试入库",List.of(new LineRequest(productId,20L,"B001",null))));
-        inbound=service.receive(inbound.id(),new ReceiveRequest("REC-01"),"tester");
+        inbound=service.receive(inbound.id(),new ReceiveRequest("REC-01",null),"tester");
         assertEquals("RECEIVED",inbound.status());
-        assertEquals(20L,service.inventory(null,warehouseId,1,20).records().get(0).quantity());
+        assertEquals(20L,service.inventory("B001",warehouseId,1,20).records().stream()
+                .filter(item -> "B001".equals(item.batchNo())).findFirst().orElseThrow().quantity());
 
-        OutboundView outbound=service.createOutbound(new OutboundRequest(customerId,warehouseId,null,"测试出库",List.of(new LineRequest(productId,8L,"",null))));
+        OutboundView outbound=service.createOutbound(new OutboundRequest(customerId,warehouseId,null,"测试出库",List.of(new LineRequest(productId,8L,"B001",null))));
         outbound=service.allocate(outbound.id(),"tester");
         assertEquals("ALLOCATED",outbound.status());
+        outbound=service.pick(outbound.id(),"tester");
+        assertEquals("PICKED",outbound.status());
+        outbound=service.pack(outbound.id(),"tester");
+        assertEquals("PACKED",outbound.status());
         outbound=service.ship(outbound.id(),"tester");
         assertEquals("SHIPPED",outbound.status());
-        InventoryView stock=service.inventory(null,warehouseId,1,20).records().get(0);
+        InventoryView stock=service.inventory("B001",warehouseId,1,20).records().stream()
+                .filter(item -> "B001".equals(item.batchNo())).findFirst().orElseThrow();
         assertEquals(12L,stock.quantity()); assertEquals(0L,stock.allocatedQuantity());
+    }
+
+    @Test void supportsPartialReceiptCancellationAndReturn() {
+        InboundView inbound=service.createInbound(new InboundRequest(supplierId,warehouseId,null,"分批收货",List.of(new LineRequest(productId,10L,"B-PARTIAL",null))));
+        Long itemId=inbound.items().get(0).id();
+        inbound=service.receive(inbound.id(),new ReceiveRequest("REC-01",List.of(new ReceiveLineRequest(itemId,4L))),"tester");
+        assertEquals("PARTIALLY_RECEIVED",inbound.status());
+        assertEquals(4L,inbound.receivedQuantity());
+        inbound=service.receive(inbound.id(),new ReceiveRequest("REC-01",null),"tester");
+        assertEquals("RECEIVED",inbound.status());
+        assertEquals(10L,inbound.receivedQuantity());
+
+        OutboundView cancelled=service.createOutbound(new OutboundRequest(customerId,warehouseId,null,"取消测试",List.of(new LineRequest(productId,2L,"B-PARTIAL",null))));
+        cancelled=service.allocate(cancelled.id(),"tester");
+        cancelled=service.cancel(cancelled.id(),"tester");
+        assertEquals("CANCELLED",cancelled.status());
+        assertEquals(0L,cancelled.allocatedQuantity());
+
+        OutboundView returned=service.createOutbound(new OutboundRequest(customerId,warehouseId,null,"退货测试",List.of(new LineRequest(productId,3L,"B-PARTIAL",null))));
+        returned=service.allocate(returned.id(),"tester");
+        returned=service.ship(returned.id(),"tester");
+        returned=service.returnShipment(returned.id(),"tester");
+        assertEquals("RETURNED",returned.status());
+        assertEquals(0L,returned.shippedQuantity());
+
+        InventoryView counted=service.inventory("B-PARTIAL",warehouseId,1,20).records().stream()
+                .filter(item -> "B-PARTIAL".equals(item.batchNo())).findFirst().orElseThrow();
+        long actual=counted.quantity()+1;
+        counted=service.stocktake(new StocktakeRequest(counted.id(),actual,"测试盘点"),"tester");
+        assertEquals(actual,counted.quantity());
     }
 
     @Test void rejectsAllocationWhenStockIsInsufficient() {

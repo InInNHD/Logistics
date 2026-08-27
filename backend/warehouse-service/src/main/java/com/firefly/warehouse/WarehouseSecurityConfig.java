@@ -70,18 +70,21 @@ class WarehouseSecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
+                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/**")
                                 .hasAnyRole("ADMIN", "WAREHOUSE_MANAGER", "RECEIVER", "PICKER")
                         .requestMatchers(HttpMethod.POST,
                                 "/api/warehouses", "/api/locations", "/api/products", "/api/partners",
-                                "/api/inventory/adjustments", "/api/inventory/transfers")
+                                "/api/inventory/adjustments", "/api/inventory/transfers", "/api/inventory/stocktakes")
                                 .hasAnyRole("ADMIN", "WAREHOUSE_MANAGER")
                         .requestMatchers(HttpMethod.POST,
                                 "/api/inbound-orders", "/api/inbound-orders/*/receive")
                                 .hasAnyRole("ADMIN", "WAREHOUSE_MANAGER", "RECEIVER")
                         .requestMatchers(HttpMethod.POST,
                                 "/api/outbound-orders", "/api/outbound-orders/*/allocate",
-                                "/api/outbound-orders/*/ship")
+                                "/api/outbound-orders/*/pick", "/api/outbound-orders/*/pack",
+                                "/api/outbound-orders/*/ship", "/api/outbound-orders/*/cancel",
+                                "/api/outbound-orders/*/return")
                                 .hasAnyRole("ADMIN", "WAREHOUSE_MANAGER", "PICKER")
                         .anyRequest().denyAll())
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)

@@ -12,6 +12,7 @@ public class UserAccount {
     @Column(nullable = false, length = 100) private String displayName;
     @Column(nullable = false, length = 30) private String role;
     @Column(nullable = false) private boolean enabled = true;
+    @Column(nullable = false) private boolean registrationPending;
     @Column(nullable = false) private int failedLoginAttempts;
     private LocalDateTime lockedUntil;
     @Column(nullable = false) private LocalDateTime createdAt = LocalDateTime.now();
@@ -23,6 +24,7 @@ public class UserAccount {
     public Long getId() { return id; } public String getUsername() { return username; }
     public String getPasswordHash() { return passwordHash; } public String getDisplayName() { return displayName; }
     public String getRole() { return role; } public boolean isEnabled() { return enabled; }
+    public boolean isRegistrationPending() { return registrationPending; }
     public int getFailedLoginAttempts() { return failedLoginAttempts; }
     public LocalDateTime getLockedUntil() { return lockedUntil; }
     public LocalDateTime getCreatedAt() { return createdAt; }
@@ -37,7 +39,8 @@ public class UserAccount {
         if (displayName != null) this.displayName = displayName;
         if (role != null) this.role = role;
         if (enabled != null) this.enabled = enabled;
-        if (Boolean.TRUE.equals(enabled)) loginSucceeded();
+        if (Boolean.TRUE.equals(enabled)) { registrationPending = false; loginSucceeded(); }
     }
+    public void requestRegistrationApproval() { enabled = false; registrationPending = true; }
     public void resetPassword(String passwordHash) { this.passwordHash = passwordHash; loginSucceeded(); }
 }

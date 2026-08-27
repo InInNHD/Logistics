@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { Plus, Search } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import StatusTag from '@/components/StatusTag.vue'
 import { warehouseApi } from '@/api/warehouse'
@@ -18,6 +18,9 @@ const warehouses = ref<Warehouse[]>([])
 const suppliers = ref<Partner[]>([])
 const products = ref<Product[]>([])
 const dialogVisible = ref(false)
+const receiveDialogVisible = ref(false)
+const receiveOrder = ref<InboundOrder>()
+const receiveQuantities = reactive<Record<number, number>>({})
 const createIntentKey = ref('')
 const processingId = ref<number>()
 const commandKeys = new Map<number, string>()
@@ -62,16 +65,28 @@ async function createOrder() {
   } finally { submitting.value = false }
 }
 
-async function receive(order: InboundOrder) {
+function openReceive(order: InboundOrder) {
+  receiveOrder.value = order
+  for (const key of Object.keys(receiveQuantities)) delete receiveQuantities[Number(key)]
+  for (const item of order.items || []) receiveQuantities[item.id] = Math.max(item.quantity - item.receivedQuantity, 0)
+  receiveDialogVisible.value = true
+}
+
+async function receive() {
+  const order = receiveOrder.value
+  if (!order) return
   if (processingId.value !== undefined) return
   processingId.value = order.id
   try {
-    await ElMessageBox.confirm(`确认完成入库单 ${order.orderNo} 的收货？库存将按单据数量增加。`, '确认收货', { type: 'warning', confirmButtonText: '确认收货' })
+    const items = (order.items || []).map((item) => ({ itemId: item.id, quantity: receiveQuantities[item.id] || 0 })).filter((item) => item.quantity > 0)
+    if (!items.length) return ElMessage.warning('请至少填写一项本次收货数量')
+    if ((order.items || []).some((item) => (receiveQuantities[item.id] || 0) > item.quantity - item.receivedQuantity)) return ElMessage.warning('本次收货不能超过待收数量')
     const key = commandKeys.get(order.id) || crypto.randomUUID()
     commandKeys.set(order.id, key)
-    await warehouseApi.receiveInbound(order.id, key)
+    await warehouseApi.receiveInbound(order.id, { items }, key)
     commandKeys.delete(order.id)
-    ElMessage.success('收货完成，库存已更新'); await load()
+    receiveDialogVisible.value = false
+    ElMessage.success('本次收货已入账'); await load()
   } finally { processingId.value = undefined }
 }
 
@@ -94,13 +109,13 @@ onMounted(load)
       <p>收货确认后，系统会写入库存流水并同步库存余额。</p>
     </div>
     <section class="surface-card table-card">
-      <div class="toolbar"><div class="toolbar-left"><el-input v-model="keyword" :prefix-icon="Search" clearable placeholder="搜索入库单号或供应商" style="width:280px" @keyup.enter="search" /><el-select v-model="status" clearable placeholder="全部状态" style="width:140px"><el-option label="待收货" value="PENDING" /><el-option label="已收货" value="RECEIVED" /></el-select><el-button @click="search">查询</el-button></div><span class="muted">共 {{ pagination.total }} 笔单据</span></div>
+      <div class="toolbar"><div class="toolbar-left"><el-input v-model="keyword" :prefix-icon="Search" clearable placeholder="搜索入库单号或供应商" style="width:280px" @keyup.enter="search" /><el-select v-model="status" clearable placeholder="全部状态" style="width:140px"><el-option label="待收货" value="PENDING" /><el-option label="部分收货" value="PARTIALLY_RECEIVED" /><el-option label="已收货" value="RECEIVED" /></el-select><el-button @click="search">查询</el-button></div><span class="muted">共 {{ pagination.total }} 笔单据</span></div>
       <el-table v-loading="loading" :data="orders" stripe>
         <el-table-column prop="orderNo" label="入库单号" width="180"><template #default="s"><strong class="mono order-no">{{ s.row.orderNo }}</strong></template></el-table-column>
         <el-table-column prop="supplierName" label="供应商" min-width="190" /><el-table-column prop="warehouseName" label="入库仓库" min-width="160" />
         <el-table-column label="数量" width="130" align="right"><template #default="s"><span class="quantity">{{ s.row.receivedQuantity }} / {{ s.row.totalQuantity }}</span></template></el-table-column>
         <el-table-column label="预计到货" width="175"><template #default="s">{{ formatTime(s.row.expectedAt) }}</template></el-table-column><el-table-column label="状态" width="110"><template #default="s"><StatusTag :status="s.row.status" /></template></el-table-column>
-        <el-table-column label="操作" width="120" fixed="right"><template #default="s"><el-button v-if="!['RECEIVED','COMPLETED'].includes(s.row.status)" type="primary" link :loading="processingId===s.row.id" :disabled="processingId!==undefined&&processingId!==s.row.id" @click="receive(s.row)">确认收货</el-button><span v-else class="muted">已入账</span></template></el-table-column>
+        <el-table-column label="操作" width="120" fixed="right"><template #default="s"><el-button v-if="!['RECEIVED','COMPLETED'].includes(s.row.status)" type="primary" link :loading="processingId===s.row.id" :disabled="processingId!==undefined&&processingId!==s.row.id" @click="openReceive(s.row)">登记收货</el-button><span v-else class="muted">已入账</span></template></el-table-column>
       </el-table>
       <div class="pagination-wrap"><el-pagination :current-page="pagination.page" :page-size="pagination.size" :page-sizes="[10,20,50,100]" :total="pagination.total" layout="total, sizes, prev, pager, next, jumper" @current-change="changePage" @size-change="changeSize" /></div>
     </section>
@@ -114,11 +129,22 @@ onMounted(load)
       </el-form>
       <template #footer><el-button :disabled="submitting" @click="dialogVisible=false">取消</el-button><el-button type="primary" :loading="submitting" @click="createOrder">创建单据</el-button></template>
     </el-dialog>
+
+    <el-dialog v-model="receiveDialogVisible" :title="`登记收货 · ${receiveOrder?.orderNo || ''}`" width="620px">
+      <p class="receive-tip">按本次实际到货数量登记，可分多次完成；每次提交都会独立写入库存流水。</p>
+      <el-table :data="receiveOrder?.items || []" size="small">
+        <el-table-column prop="sku" label="SKU" width="130" />
+        <el-table-column prop="productName" label="商品" min-width="150" />
+        <el-table-column label="已收 / 应收" width="110"><template #default="s">{{ s.row.receivedQuantity }} / {{ s.row.quantity }}</template></el-table-column>
+        <el-table-column label="本次收货" width="150"><template #default="s"><el-input-number v-model="receiveQuantities[s.row.id]" :min="0" :max="s.row.quantity-s.row.receivedQuantity" controls-position="right" /></template></el-table-column>
+      </el-table>
+      <template #footer><el-button @click="receiveDialogVisible=false">取消</el-button><el-button type="primary" :loading="processingId!==undefined" @click="receive">确认入账</el-button></template>
+    </el-dialog>
   </div>
 </template>
 
 <style scoped>
-.summary-strip{display:grid;grid-template-columns:150px 150px 150px 1fr;align-items:center;margin-bottom:16px;padding:20px 24px}.summary-strip>div{display:flex;flex-direction:column;border-right:1px solid #e8edf1}.summary-strip span{color:#82909f;font-size:11px}.summary-strip strong{margin-top:6px;color:#19344d;font-size:23px}.summary-strip p{margin:0 0 0 26px;color:#8491a0;font-size:12px}.order-no{color:#254a68}.header-form{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}.line-heading{display:flex;align-items:center;justify-content:space-between;margin:4px 0 12px;color:#2c465d}.order-line{display:grid;grid-template-columns:2fr .7fr 1fr 1.1fr auto;gap:10px;margin-bottom:10px}.remark{margin-top:20px}
+.summary-strip{display:grid;grid-template-columns:150px 150px 150px 1fr;align-items:center;margin-bottom:16px;padding:20px 24px}.summary-strip>div{display:flex;flex-direction:column;border-right:1px solid #e8edf1}.summary-strip span{color:#82909f;font-size:11px}.summary-strip strong{margin-top:6px;color:#19344d;font-size:23px}.summary-strip p{margin:0 0 0 26px;color:#8491a0;font-size:12px}.order-no{color:#254a68}.header-form{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}.line-heading{display:flex;align-items:center;justify-content:space-between;margin:4px 0 12px;color:#2c465d}.order-line{display:grid;grid-template-columns:2fr .7fr 1fr 1.1fr auto;gap:10px;margin-bottom:10px}.remark{margin-top:20px}.receive-tip{margin:0 0 16px;color:#738195;font-size:12px}
 @media(max-width:900px){.summary-strip{grid-template-columns:repeat(3,1fr)}.summary-strip p{grid-column:1/-1;margin:16px 0 0}.header-form{grid-template-columns:1fr}.order-line{grid-template-columns:1fr 1fr}.order-line>:first-child{grid-column:1/-1}}
 @media(max-width:600px){.summary-strip{grid-template-columns:1fr}.summary-strip>div{padding:8px 0;border-right:0;border-bottom:1px solid #e8edf1}.order-line{grid-template-columns:1fr}.order-line>:first-child{grid-column:auto}}
 </style>

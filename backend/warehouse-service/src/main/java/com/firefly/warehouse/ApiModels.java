@@ -42,8 +42,10 @@ final class ApiModels {
                           @Pattern(regexp = "(?i)ACTIVE|INACTIVE") String status) {}
     record LineRequest(@NotNull Long productId, @NotNull @Positive Long quantity, String batchNo, LocalDate expiryDate) {}
     record InboundRequest(@NotNull Long supplierId, @NotNull Long warehouseId, LocalDateTime expectedAt, String remark, @NotEmpty List<@Valid LineRequest> items) {}
-    record ReceiveRequest(String locationCode) {}
+    record ReceiveLineRequest(@NotNull Long itemId, @NotNull @Positive Long quantity) {}
+    record ReceiveRequest(String locationCode, List<@Valid ReceiveLineRequest> items) {}
     record AdjustmentRequest(@NotNull Long warehouseId, @NotBlank String locationCode, @NotNull Long productId, @NotNull @Min(-999999999) @Max(999999999) Long quantity, String batchNo, LocalDate expiryDate, String reason) {}
     record TransferRequest(@NotNull Long inventoryId, String sourceLocationCode, @NotBlank String targetLocationCode, @NotNull @Positive Long quantity, String reason) {}
+    record StocktakeRequest(@NotNull Long inventoryId, @NotNull @PositiveOrZero Long actualQuantity, String reason) {}
     record OutboundRequest(@NotNull Long customerId, @NotNull Long warehouseId, LocalDateTime requiredAt, String remark, @NotEmpty List<@Valid LineRequest> items) {}
 }

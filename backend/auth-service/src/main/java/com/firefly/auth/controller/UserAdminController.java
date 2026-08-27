@@ -61,6 +61,14 @@ public class UserAdminController {
         return ApiResponse.ok(service.roles(operatorId(authentication)));
     }
 
+    @GetMapping("/audit-events")
+    public ApiResponse<UserManagementService.PageResult<UserManagementService.AuditView>> auditEvents(
+            Authentication authentication,
+            @RequestParam(name = "page", defaultValue = "1") int page,
+            @RequestParam(name = "size", defaultValue = "20") int size) {
+        return ApiResponse.ok(service.auditEvents(operatorId(authentication), page, size));
+    }
+
     private Long operatorId(Authentication authentication) {
         return ((TokenClaims) authentication.getPrincipal()).userId();
     }

@@ -3,6 +3,10 @@ package com.firefly.auth.service;
 import com.firefly.auth.domain.UserAccount;
 import com.firefly.auth.domain.UserRole;
 import com.firefly.auth.repository.UserAccountRepository;
+import com.firefly.auth.repository.AuthAuditRepository;
+import com.firefly.auth.repository.RevokedTokenRepository;
+import com.firefly.auth.domain.AuthAuditEvent;
+import com.firefly.auth.domain.RevokedToken;
 import com.firefly.common.security.JwtService;
 import com.firefly.common.security.TokenClaims;
 import org.springframework.beans.factory.annotation.Value;
@@ -10,6 +14,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 
 @Service
@@ -17,6 +22,8 @@ public class AuthService {
     private final UserAccountRepository repository;
     private final PasswordEncoder encoder;
     private final JwtService jwtService;
+    private final RevokedTokenRepository revokedTokens;
+    private final AuthAuditRepository audit;
     private final int maxFailures;
     private final long lockMinutes;
     private final long expiresInSeconds;
@@ -26,6 +33,8 @@ public class AuthService {
             UserAccountRepository repository,
             PasswordEncoder encoder,
             JwtService jwtService,
+            RevokedTokenRepository revokedTokens,
+            AuthAuditRepository audit,
             @Value("${firefly.login.max-failures:5}") int maxFailures,
             @Value("${firefly.login.lock-minutes:15}") long lockMinutes,
             @Value("${firefly.jwt.ttl-hours:8}") long ttlHours) {
@@ -35,6 +44,8 @@ public class AuthService {
         this.repository = repository;
         this.encoder = encoder;
         this.jwtService = jwtService;
+        this.revokedTokens = revokedTokens;
+        this.audit = audit;
         this.maxFailures = maxFailures;
         this.lockMinutes = lockMinutes;
         this.expiresInSeconds = ttlHours * 3600;
@@ -47,12 +58,20 @@ public class AuthService {
         UserAccount user = repository.lockByUsername(normalizedUsername).orElse(null);
         if (user == null) {
             encoder.matches(password == null ? "" : password, dummyPasswordHash);
+            audit.save(new AuthAuditEvent("LOGIN", normalizedUsername, false, "用户名或密码错误"));
             throw LoginException.invalidCredentials();
         }
 
         LocalDateTime now = LocalDateTime.now();
-        if (!user.isEnabled()) throw LoginException.invalidCredentials();
-        if (user.isLocked(now)) throw LoginException.locked();
+        revokedTokens.deleteByExpiresAtBefore(now);
+        if (!user.isEnabled()) {
+            audit.save(new AuthAuditEvent("LOGIN", normalizedUsername, false, "账号未启用"));
+            throw LoginException.invalidCredentials();
+        }
+        if (user.isLocked(now)) {
+            audit.save(new AuthAuditEvent("LOGIN", normalizedUsername, false, "账号已锁定"));
+            throw LoginException.locked();
+        }
         if (user.getLockedUntil() != null) {
             user.loginSucceeded();
         }
@@ -60,6 +79,7 @@ public class AuthService {
         if (!encoder.matches(password == null ? "" : password, user.getPasswordHash())) {
             user.loginFailed(maxFailures, now.plusMinutes(lockMinutes));
             repository.saveAndFlush(user);
+            audit.save(new AuthAuditEvent("LOGIN", normalizedUsername, false, "用户名或密码错误"));
             if (user.isLocked(now)) throw LoginException.locked();
             throw LoginException.invalidCredentials();
         }
@@ -70,7 +90,26 @@ public class AuthService {
         }
         String role = UserRole.parse(user.getRole()).code();
         String token = jwtService.create(new TokenClaims(user.getId(), user.getUsername(), role));
+        audit.save(new AuthAuditEvent("LOGIN", normalizedUsername, true, "登录成功"));
         return new LoginResult(token, "Bearer", expiresInSeconds, toUserInfo(user));
+    }
+
+    @Transactional
+    public void logout(String token) {
+        TokenClaims claims = jwtService.parse(token);
+        revokedTokens.deleteByExpiresAtBefore(LocalDateTime.now());
+        revokedTokens.save(new RevokedToken(claims.tokenId(), claims.userId(),
+                LocalDateTime.ofInstant(claims.expiresAt(), ZoneId.systemDefault())));
+        audit.save(new AuthAuditEvent("LOGOUT", claims.username(), true, "主动退出登录"));
+    }
+
+    @Transactional(readOnly = true)
+    public boolean tokenActive(Long userId, String role, String tokenId) {
+        if (userId == null || role == null || tokenId == null || revokedTokens.existsById(tokenId)) return false;
+        return repository.findById(userId).filter(UserAccount::isEnabled)
+                .filter(user -> !user.isLocked(LocalDateTime.now()))
+                .map(user -> UserRole.parse(user.getRole()).code().equals(UserRole.parse(role).code()))
+                .orElse(false);
     }
 
     @Transactional(readOnly = true)

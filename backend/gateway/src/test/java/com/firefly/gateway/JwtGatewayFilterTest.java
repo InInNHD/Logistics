@@ -68,6 +68,20 @@ class JwtGatewayFilterTest {
         assertEquals(HttpStatus.FORBIDDEN, exchange.getResponse().getStatusCode());
     }
 
+    @Test void authenticatedOperatorCanLogout() {
+        var request = MockServerHttpRequest.post("/api/auth/logout")
+                .header("Authorization", "Bearer " + token("receiver", "RECEIVER"))
+                .build();
+        AtomicReference<ServerWebExchange> forwarded = new AtomicReference<>();
+
+        filter.filter(MockServerWebExchange.from(request), exchange -> {
+            forwarded.set(exchange);
+            return exchange.getResponse().setComplete();
+        }).block();
+
+        assertEquals("receiver", forwarded.get().getRequest().getHeaders().getFirst("X-Username"));
+    }
+
     @Test void publicLoginAlsoDropsForgedIdentityHeaders() {
         var request = MockServerHttpRequest.post("/api/auth/login")
                 .header("X-User-Role", "ADMIN")

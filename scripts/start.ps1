@@ -38,6 +38,7 @@ $script:AllowedEnvironment = @{
     LOGIN_MAX_FAILURES = $true; LOGIN_LOCK_MINUTES = $true
     GATEWAY_PORT = $true; AUTH_SERVICE_PORT = $true; WAREHOUSE_SERVICE_PORT = $true
     AUTH_SERVICE_URL = $true; WAREHOUSE_SERVICE_URL = $true
+    TOKEN_STATUS_CHECK_ENABLED = $true; SPRINGDOC_ENABLED = $true
     CORS_ALLOWED_ORIGINS = $true; FRONTEND_PORT = $true; VITE_API_BASE_URL = $true
 }
 
@@ -577,7 +578,7 @@ function Assert-DatabaseMode(
         if ($collation.ToLowerInvariant() -notmatch '^utf8mb4_.*_ci$') { throw "既有业务表排序规则 $collation 与应用的大小写唯一性语义不兼容。" }
     }
 
-    Assert-FlywayHistory $MySqlExe $DbHost $DbPort $Database $Username $Password 'flyway_auth_schema_history' 'sys_' @('', '1', '1,2', '1,2,3', '0,1', '0,1,2', '0,1,2,3')
+    Assert-FlywayHistory $MySqlExe $DbHost $DbPort $Database $Username $Password 'flyway_auth_schema_history' 'sys_' @('', '1', '1,2', '1,2,3', '1,2,3,4', '1,2,3,4,5', '0,1', '0,1,2', '0,1,2,3', '0,1,2,3,4', '0,1,2,3,4,5')
     $warehouseAllowed = if ($DataMode -eq 'Demo') { @('', '1', '1,2', '1,2,3', '0,1', '0,1,2', '0,1,2,3') } else { @('', '1', '1,3', '0,1', '0,1,3') }
     Assert-FlywayHistory $MySqlExe $DbHost $DbPort $Database $Username $Password 'flyway_warehouse_schema_history' 'wms_' $warehouseAllowed
 }

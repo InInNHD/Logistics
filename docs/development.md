@@ -247,6 +247,18 @@ curl http://localhost:8080/api/auth/me \
 
 对收货、调整、移库、分配和发运的重试必须复用相同 `Idempotency-Key`。详细请求见 [API 概览](api.md)。
 
+### 数据库备份
+
+本机 MySQL 8 可执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\backup-mysql.ps1
+```
+
+脚本读取本地 `.env` 的业务数据库账号，使用 `mysqldump --single-transaction` 输出到已忽略的 `backups/`，临时凭据文件和备份文件仅授予当前 Windows 用户访问。恢复前先在隔离数据库验证备份，并使用 MySQL 客户端导入 `.sql`；不要直接覆盖正在运行的生产库。
+
+OpenAPI 在本地默认启用：认证服务为 `http://127.0.0.1:8081/swagger-ui.html`，仓储服务为 `http://127.0.0.1:8082/swagger-ui.html`。生产设置 `SPRINGDOC_ENABLED=false`。
+
 ## 9. 常见问题
 
 ### Compose 服务迟迟不健康

@@ -1,0 +1,14 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+**/target
+**/node_modules
+**/dist
+**/.vite
+**/*.log
+coverage
+.idea
+.vscode
+

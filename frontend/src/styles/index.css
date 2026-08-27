@@ -1,0 +1,63 @@
+:root {
+  color: #17263a;
+  background: #f2f5f8;
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --firefly-navy: #0b1f33;
+  --firefly-navy-soft: #16314c;
+  --firefly-yellow: #f3c969;
+  --firefly-green: #4aa584;
+  --firefly-bg: #f3f6f8;
+  --firefly-line: #e5eaef;
+  --firefly-muted: #738195;
+}
+
+* { box-sizing: border-box; }
+html, body, #app { width: 100%; min-height: 100%; margin: 0; }
+body { min-height: 100vh; background: var(--firefly-bg); }
+button, input, textarea { font: inherit; }
+
+.page-container { padding: 26px 28px 36px; }
+.surface-card {
+  background: #fff;
+  border: 1px solid rgba(11, 31, 51, 0.07);
+  border-radius: 16px;
+  box-shadow: 0 8px 30px rgba(28, 45, 65, 0.05);
+}
+.table-card { padding: 4px 20px 18px; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 0; }
+.toolbar-left, .toolbar-right { display: flex; align-items: center; gap: 10px; }
+.pagination-wrap { display: flex; justify-content: flex-end; padding: 20px 0 2px; overflow-x: auto; }
+.muted { color: var(--firefly-muted); }
+.mono { font-family: "SFMono-Regular", Consolas, monospace; }
+.quantity { font-variant-numeric: tabular-nums; font-weight: 650; }
+
+.el-button--primary {
+  --el-button-bg-color: #16314c;
+  --el-button-border-color: #16314c;
+  --el-button-hover-bg-color: #234a6c;
+  --el-button-hover-border-color: #234a6c;
+  --el-button-active-bg-color: #0b1f33;
+}
+.el-table { --el-table-header-bg-color: #f7f9fb; --el-table-row-hover-bg-color: #f6faf8; }
+.el-table th.el-table__cell { color: #536276; font-weight: 650; }
+.el-dialog { border-radius: 18px; overflow: hidden; }
+.el-dialog__header { padding: 22px 24px 16px; border-bottom: 1px solid var(--firefly-line); }
+.el-dialog__body { padding: 24px; }
+.el-tabs__item.is-active { color: #16314c; font-weight: 650; }
+.el-tabs__active-bar { background-color: var(--firefly-yellow); height: 3px; }
+
+@media (max-width: 1280px) {
+  .page-container { padding: 22px; }
+}
+
+@media (max-width: 700px) {
+  .page-container { padding: 16px 12px 28px; }
+  .surface-card { border-radius: 12px; }
+  .table-card { padding-inline: 12px; overflow: hidden; }
+  .toolbar { align-items: flex-start; flex-direction: column; }
+  .toolbar-left, .toolbar-right { width: 100%; flex-wrap: wrap; }
+  .pagination-wrap { justify-content: flex-start; }
+  .el-dialog { width: calc(100vw - 24px) !important; margin-top: 4vh !important; }
+}

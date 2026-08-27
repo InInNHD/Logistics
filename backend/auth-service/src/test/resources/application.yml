@@ -1,0 +1,23 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:auth;MODE=MySQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+  flyway:
+    enabled: false
+firefly:
+  jwt:
+    secret: firefly-logistics-test-secret-key-123456
+    issuer: firefly-logistics-test
+    audience: firefly-logistics-test-client
+  admin:
+    bootstrap-enabled: true
+    username: admin
+    password: Firefly@123
+  login:
+    max-failures: 3
+    lock-minutes: 15

@@ -1,0 +1,36 @@
+server:
+  port: ${PORT:${SERVER_PORT:8081}}
+spring:
+  application:
+    name: auth-service
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/firefly_logistics?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+    username: ${DB_USERNAME:firefly}
+    password: ${DB_PASSWORD:firefly_dev_password}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+    table: flyway_auth_schema_history
+    baseline-on-migrate: true
+    baseline-version: 0
+firefly:
+  jwt:
+    secret: ${JWT_SECRET:firefly-logistics-change-this-jwt-secret-in-production}
+    ttl-hours: ${JWT_TTL_HOURS:8}
+    issuer: ${JWT_ISSUER:firefly-logistics}
+    audience: ${JWT_AUDIENCE:firefly-logistics-web}
+  admin:
+    bootstrap-enabled: ${ADMIN_BOOTSTRAP_ENABLED:true}
+    username: ${ADMIN_USERNAME:admin}
+    password: ${ADMIN_PASSWORD:Firefly@123}
+  login:
+    max-failures: ${LOGIN_MAX_FAILURES:5}
+    lock-minutes: ${LOGIN_LOCK_MINUTES:15}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

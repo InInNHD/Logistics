@@ -1,0 +1,34 @@
+server:
+  port: ${PORT:${SERVER_PORT:8082}}
+spring:
+  application:
+    name: warehouse-service
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/firefly_logistics?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+    username: ${DB_USERNAME:firefly}
+    password: ${DB_PASSWORD:firefly_dev_password}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: Asia/Shanghai
+  flyway:
+    enabled: true
+    table: flyway_warehouse_schema_history
+    baseline-on-migrate: true
+    baseline-version: 0
+firefly:
+  security:
+    enabled: ${WAREHOUSE_SECURITY_ENABLED:true}
+  jwt:
+    secret: ${JWT_SECRET:firefly-logistics-change-this-jwt-secret-in-production}
+    issuer: ${JWT_ISSUER:firefly-logistics}
+    audience: ${JWT_AUDIENCE:firefly-logistics-web}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

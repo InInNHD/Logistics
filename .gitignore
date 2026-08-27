@@ -1,0 +1,57 @@
+# Operating system
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDEs and editors
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+*.swp
+*.swo
+
+# Java / Maven
+**/target/
+*.class
+.mvn/timing.properties
+
+# Node / Vue
+**/node_modules/
+**/dist/
+**/.vite/
+**/.eslintcache
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Runtime files
+.firefly/
+logs/
+**/logs/
+*.log
+*.pid
+*.hprof
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+application-local.yml
+application-local.yaml
+application-local.properties
+
+# Test and coverage output
+coverage/
+**/surefire-reports/
+**/failsafe-reports/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak

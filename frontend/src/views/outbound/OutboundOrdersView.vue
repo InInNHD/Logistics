@@ -1,0 +1,53 @@
+<script setup lang="ts">
+import { computed, onMounted, reactive, ref } from 'vue'
+import { Plus, Search } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import PageHeader from '@/components/PageHeader.vue'
+import StatusTag from '@/components/StatusTag.vue'
+import { warehouseApi } from '@/api/warehouse'
+import { toLocalDateTimeValue } from '@/utils/date'
+import { createPagination } from '@/utils/pagination'
+import type { OrderLineDraft, OutboundOrder, Partner, Product, Warehouse } from '@/types'
+
+const loading=ref(false),submitting=ref(false),dialogVisible=ref(false),keyword=ref(''),status=ref('')
+const createIntentKey=ref(''),processingCommand=ref('')
+const commandKeys=new Map<string,string>()
+const orders=ref<OutboundOrder[]>([]),warehouses=ref<Warehouse[]>([]),customers=ref<Partner[]>([]),products=ref<Product[]>([])
+const pagination=reactive(createPagination())
+const form=reactive({customerId:undefined as number|undefined,warehouseId:undefined as number|undefined,requiredAt:'',remark:'',items:[] as OrderLineDraft[]})
+const pending= computed(()=>orders.value.filter(o=>!['SHIPPED','COMPLETED','CANCELLED'].includes(o.status)).length)
+async function load(){loading.value=true;try{const[o,w,c,p]=await Promise.all([warehouseApi.outboundOrders({keyword:keyword.value||undefined,status:status.value||undefined,page:pagination.page,size:pagination.size}),warehouseApi.warehouses({page:1,size:200}),warehouseApi.partners({type:'CUSTOMER',page:1,size:200}),warehouseApi.products({page:1,size:200})]);orders.value=o.records;warehouses.value=w.records;customers.value=c.records.filter(i=>i.type==='CUSTOMER');products.value=p.records;Object.assign(pagination,{total:o.total,page:o.page,size:o.size})}finally{loading.value=false}}
+function openCreate(){Object.assign(form,{customerId:customers.value[0]?.id,warehouseId:warehouses.value[0]?.id,requiredAt:toLocalDateTimeValue(),remark:'',items:[{productId:products.value[0]?.id,sku:products.value[0]?.sku||'',productName:products.value[0]?.name,quantity:1}]});createIntentKey.value=crypto.randomUUID();dialogVisible.value=true}
+function clearCreateIntent(){if(!submitting.value)createIntentKey.value=''}
+function productChanged(line:OrderLineDraft){const p=products.value.find(i=>i.id===line.productId);if(p){line.sku=p.sku;line.productName=p.name}}
+function addLine(){form.items.push({productId:products.value[0]?.id,sku:products.value[0]?.sku||'',productName:products.value[0]?.name,quantity:1})}
+async function createOrder(){if(submitting.value)return;if(!form.customerId||!form.warehouseId||form.items.some(i=>!i.productId||i.quantity<=0))return ElMessage.warning('请完整填写客户、仓库与商品明细');submitting.value=true;try{await warehouseApi.createOutboundOrder({customerId:form.customerId,warehouseId:form.warehouseId,requiredAt:form.requiredAt,remark:form.remark,items:form.items.map(i=>({productId:i.productId!,quantity:i.quantity,batchNo:i.batchNo,expiryDate:i.expiryDate}))},createIntentKey.value);ElMessage.success('出库单已创建');dialogVisible.value=false;createIntentKey.value='';await load()}finally{submitting.value=false}}
+async function runCommand(operation:'allocate'|'ship',order:OutboundOrder){if(processingCommand.value)return;const command=`${operation}:${order.id}`;processingCommand.value=command;try{if(operation==='allocate'){await ElMessageBox.confirm(`将为 ${order.orderNo} 按可用库存进行分配，是否继续？`,'库存分配',{type:'warning'})}else{await ElMessageBox.confirm(`确认发运 ${order.orderNo}？发运后将正式扣减库存。`,'确认发运',{type:'warning'})}const key=commandKeys.get(command)||crypto.randomUUID();commandKeys.set(command,key);if(operation==='allocate'){await warehouseApi.allocateOutbound(order.id,key);ElMessage.success('库存分配完成')}else{await warehouseApi.shipOutbound(order.id,key);ElMessage.success('发运完成，库存已扣减')}commandKeys.delete(command);await load()}finally{processingCommand.value=''}}
+async function allocate(order:OutboundOrder){await runCommand('allocate',order)}
+async function ship(order:OutboundOrder){await runCommand('ship',order)}
+function formatTime(v?:string){return v?new Date(v).toLocaleString('zh-CN',{hour12:false}):'—'}
+async function search(){pagination.page=1;await load()}
+async function changePage(page:number){pagination.page=page;await load()}
+async function changeSize(size:number){pagination.size=size;pagination.page=1;await load()}
+onMounted(load)
+</script>
+
+<template>
+  <div class="page-container">
+    <PageHeader eyebrow="OUTBOUND FULFILLMENT" title="出库管理" description="完成订单分配、拣货准备与发运扣账"><el-button type="primary" :icon="Plus" @click="openCreate">创建出库单</el-button></PageHeader>
+    <div class="flow-banner surface-card"><div><span>01</span><strong>创建订单</strong><small>录入客户与需求</small></div><i /><div><span>02</span><strong>库存分配</strong><small>预占可用库存</small></div><i /><div><span>03</span><strong>拣货复核</strong><small>MVP 合并处理</small></div><i /><div><span>04</span><strong>确认发运</strong><small>扣减库存并记账</small></div><b>{{ pending }} 单待处理</b></div>
+    <section class="surface-card table-card">
+      <div class="toolbar"><div class="toolbar-left"><el-input v-model="keyword" :prefix-icon="Search" clearable placeholder="搜索出库单号或客户" style="width:280px" @keyup.enter="search" /><el-select v-model="status" clearable placeholder="全部状态" style="width:140px"><el-option label="待分配" value="PENDING" /><el-option label="已分配" value="ALLOCATED" /><el-option label="已发运" value="SHIPPED" /></el-select><el-button @click="search">查询</el-button></div><span class="muted">共 {{ pagination.total }} 笔单据</span></div>
+      <el-table v-loading="loading" :data="orders" stripe><el-table-column prop="orderNo" label="出库单号" width="180"><template #default="s"><strong class="mono order-no">{{ s.row.orderNo }}</strong></template></el-table-column><el-table-column prop="customerName" label="客户" min-width="190" /><el-table-column prop="warehouseName" label="出库仓库" min-width="160" /><el-table-column label="数量" width="150" align="right"><template #default="s"><span class="quantity">{{ s.row.shippedQuantity }} / {{ s.row.allocatedQuantity }} / {{ s.row.totalQuantity }}</span></template></el-table-column><el-table-column label="要求发运" width="175"><template #default="s">{{ formatTime(s.row.requiredAt) }}</template></el-table-column><el-table-column label="状态" width="110"><template #default="s"><StatusTag :status="s.row.status" /></template></el-table-column><el-table-column label="操作" width="180" fixed="right"><template #default="s"><el-button v-if="['DRAFT','PENDING','CREATED'].includes(s.row.status)" link type="primary" :loading="processingCommand===`allocate:${s.row.id}`" :disabled="!!processingCommand&&processingCommand!==`allocate:${s.row.id}`" @click="allocate(s.row)">分配库存</el-button><el-button v-if="['ALLOCATED','PICKED','PACKED'].includes(s.row.status)" link type="success" :loading="processingCommand===`ship:${s.row.id}`" :disabled="!!processingCommand&&processingCommand!==`ship:${s.row.id}`" @click="ship(s.row)">确认发运</el-button><span v-if="['SHIPPED','COMPLETED'].includes(s.row.status)" class="muted">已完成</span></template></el-table-column></el-table>
+      <div class="pagination-wrap"><el-pagination :current-page="pagination.page" :page-size="pagination.size" :page-sizes="[10,20,50,100]" :total="pagination.total" layout="total, sizes, prev, pager, next, jumper" @current-change="changePage" @size-change="changeSize" /></div>
+    </section>
+
+    <el-dialog v-model="dialogVisible" title="创建出库单" width="820px" destroy-on-close :close-on-click-modal="!submitting" :close-on-press-escape="!submitting" :show-close="!submitting" @closed="clearCreateIntent"><el-form :model="form" label-position="top"><div class="header-form"><el-form-item label="客户"><el-select v-model="form.customerId" filterable style="width:100%"><el-option v-for="item in customers" :key="item.id" :label="item.name" :value="item.id" /></el-select></el-form-item><el-form-item label="出库仓库"><el-select v-model="form.warehouseId" style="width:100%"><el-option v-for="item in warehouses" :key="item.id" :label="item.name" :value="item.id" /></el-select></el-form-item><el-form-item label="要求发运"><el-date-picker v-model="form.requiredAt" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" style="width:100%" /></el-form-item></div><div class="line-heading"><strong>订单明细</strong><el-button size="small" :icon="Plus" @click="addLine">添加商品</el-button></div><div v-for="(line,index) in form.items" :key="index" class="order-line"><el-select v-model="line.productId" filterable placeholder="选择商品" @change="productChanged(line)"><el-option v-for="item in products" :key="item.id" :label="`${item.sku} · ${item.name}`" :value="item.id" /></el-select><el-input-number v-model="line.quantity" :min="1" controls-position="right" /><el-input v-model="line.batchNo" placeholder="指定批次（选填）" /><el-button text type="danger" :disabled="form.items.length===1" @click="form.items.splice(index,1)">移除</el-button></div><el-form-item label="备注" class="remark"><el-input v-model="form.remark" type="textarea" :rows="2" /></el-form-item></el-form><template #footer><el-button :disabled="submitting" @click="dialogVisible=false">取消</el-button><el-button type="primary" :loading="submitting" @click="createOrder">创建单据</el-button></template></el-dialog>
+  </div>
+</template>
+
+<style scoped>
+.flow-banner{display:grid;grid-template-columns:1fr 35px 1fr 35px 1fr 35px 1fr auto;align-items:center;margin-bottom:16px;padding:18px 22px}.flow-banner>div{display:grid;grid-template-columns:32px 1fr;align-items:center}.flow-banner div span{grid-row:1/3;display:grid;width:28px;height:28px;place-items:center;color:#9a782e;background:#fbf1d8;border-radius:8px;font-size:10px;font-weight:750}.flow-banner strong{color:#30475c;font-size:12px}.flow-banner small{color:#8b97a4;font-size:9px}.flow-banner i{height:1px;margin:0 8px;background:#dce3e8}.flow-banner>b{padding:8px 12px;color:#536da7;background:#eef1f9;border-radius:8px;font-size:11px}.order-no{color:#254a68}.header-form{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}.line-heading{display:flex;align-items:center;justify-content:space-between;margin:4px 0 12px;color:#2c465d}.order-line{display:grid;grid-template-columns:2.1fr .7fr 1fr auto;gap:10px;margin-bottom:10px}.remark{margin-top:20px}
+@media(max-width:1050px){.flow-banner{grid-template-columns:repeat(2,1fr);gap:12px}.flow-banner>i{display:none}.flow-banner>b{grid-column:1/-1}.header-form{grid-template-columns:1fr}.order-line{grid-template-columns:1fr 1fr}.order-line>:first-child{grid-column:1/-1}}
+@media(max-width:600px){.flow-banner{grid-template-columns:1fr}.order-line{grid-template-columns:1fr}.order-line>:first-child{grid-column:auto}}
+</style>

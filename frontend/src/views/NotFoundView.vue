@@ -1,0 +1,2 @@
+<template><main class="not-found"><strong>404</strong><h1>页面未找到</h1><p>您访问的页面不存在或已被移动。</p><el-button type="primary" @click="$router.replace('/dashboard')">返回控制台</el-button></main></template>
+<style scoped>.not-found{display:flex;min-height:100vh;align-items:center;justify-content:center;flex-direction:column;background:#f3f6f8}.not-found strong{color:#f3c969;font-size:88px;line-height:1}.not-found h1{color:#10283f}.not-found p{margin-top:0;color:#7d8a99}</style>

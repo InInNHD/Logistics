@@ -1,0 +1,183 @@
+name: ${COMPOSE_PROJECT_NAME:-firefly-logistics}
+
+x-backend-common: &backend-common
+  restart: unless-stopped
+  networks:
+    - firefly-network
+  environment: &backend-environment
+    TZ: Asia/Shanghai
+    DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-firefly_logistics}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    DB_USERNAME: ${MYSQL_USER:-firefly}
+    DB_PASSWORD: ${MYSQL_PASSWORD:-firefly_dev_password}
+    JWT_SECRET: ${JWT_SECRET:-change-me-to-at-least-32-random-characters}
+    JWT_ISSUER: ${JWT_ISSUER:-firefly-logistics}
+    JWT_AUDIENCE: ${JWT_AUDIENCE:-firefly-logistics-web}
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: firefly-mysql
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-firefly_logistics}
+      MYSQL_USER: ${MYSQL_USER:-firefly}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-firefly_dev_password}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-firefly_root_dev_password}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+08:00
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mysqladmin ping -h 127.0.0.1 -uroot -p"$${MYSQL_ROOT_PASSWORD}" --silent
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - firefly-network
+
+  auth-service:
+    <<: *backend-common
+    build:
+      context: .
+      dockerfile: deploy/docker/backend.Dockerfile
+      args:
+        MODULE: auth-service
+    environment:
+      <<: *backend-environment
+      SERVER_PORT: 8081
+      JWT_TTL_HOURS: ${JWT_TTL_HOURS:-8}
+      ADMIN_BOOTSTRAP_ENABLED: ${ADMIN_BOOTSTRAP_ENABLED:-true}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Firefly@123}
+      LOGIN_MAX_FAILURES: ${LOGIN_MAX_FAILURES:-5}
+      LOGIN_LOCK_MINUTES: ${LOGIN_LOCK_MINUTES:-15}
+    expose:
+      - "8081"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, curl, -fsS, http://127.0.0.1:8081/actuator/health]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  warehouse-service:
+    <<: *backend-common
+    build:
+      context: .
+      dockerfile: deploy/docker/backend.Dockerfile
+      args:
+        MODULE: warehouse-service
+    environment:
+      <<: *backend-environment
+      SERVER_PORT: 8082
+      SPRING_PROFILES_ACTIVE: demo
+      WAREHOUSE_SECURITY_ENABLED: ${WAREHOUSE_SECURITY_ENABLED:-true}
+    expose:
+      - "8082"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, curl, -fsS, http://127.0.0.1:8082/actuator/health]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  gateway:
+    <<: *backend-common
+    build:
+      context: .
+      dockerfile: deploy/docker/backend.Dockerfile
+      args:
+        MODULE: gateway
+    environment:
+      TZ: Asia/Shanghai
+      SERVER_PORT: 8080
+      JWT_SECRET: ${JWT_SECRET:-change-me-to-at-least-32-random-characters}
+      JWT_ISSUER: ${JWT_ISSUER:-firefly-logistics}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-firefly-logistics-web}
+      AUTH_SERVICE_URL: http://auth-service:8081
+      WAREHOUSE_SERVICE_URL: http://warehouse-service:8082
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      warehouse-service:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, curl, -fsS, http://127.0.0.1:8080/actuator/health]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    environment:
+      PORT: 80
+      API_UPSTREAM: http://gateway:8080
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    depends_on:
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, -qO-, http://127.0.0.1/health]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - firefly-network
+
+  redis:
+    image: redis:7.4-alpine
+    profiles: [redis]
+    container_name: firefly-redis
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-firefly_redis_dev_password}
+    command:
+      - sh
+      - -c
+      - exec redis-server --appendonly yes --requirepass "$${REDIS_PASSWORD}"
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - redis-cli -a "$${REDIS_PASSWORD}" --no-auth-warning ping | grep PONG
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - firefly-network
+
+volumes:
+  mysql_data:
+  redis_data:
+
+networks:
+  firefly-network:
+    driver: bridge

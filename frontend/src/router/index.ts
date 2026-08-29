@@ -52,6 +52,12 @@ const router = createRouter({
           meta: { title: '出库管理', roles: ['WAREHOUSE_MANAGER', 'PICKER'] },
         },
         {
+          path: 'carrier-integration',
+          name: 'carrier-integration',
+          component: () => import('@/views/carrier/CarrierIntegrationView.vue'),
+          meta: { title: '快递集成', roles: ['ADMIN', 'WAREHOUSE_MANAGER'] },
+        },
+        {
           path: 'users',
           name: 'users',
           component: () => import('@/views/settings/UsersView.vue'),

@@ -71,11 +71,16 @@ class WarehouseSecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/carrier-accounts", "/api/carrier-sync-logs")
+                                .hasAnyRole("ADMIN", "WAREHOUSE_MANAGER")
                         .requestMatchers(HttpMethod.GET, "/api/**")
                                 .hasAnyRole("ADMIN", "WAREHOUSE_MANAGER", "RECEIVER", "PICKER")
                         .requestMatchers(HttpMethod.POST,
                                 "/api/warehouses", "/api/locations", "/api/products", "/api/partners",
-                                "/api/inventory/adjustments", "/api/inventory/transfers", "/api/inventory/stocktakes")
+                                "/api/inventory/adjustments", "/api/inventory/transfers", "/api/inventory/stocktakes",
+                                "/api/carrier-accounts", "/api/carrier-accounts/*/test", "/api/carrier-accounts/*/sync")
+                                .hasAnyRole("ADMIN", "WAREHOUSE_MANAGER")
+                        .requestMatchers(HttpMethod.PUT, "/api/carrier-accounts/*")
                                 .hasAnyRole("ADMIN", "WAREHOUSE_MANAGER")
                         .requestMatchers(HttpMethod.POST,
                                 "/api/inbound-orders", "/api/inbound-orders/*/receive")

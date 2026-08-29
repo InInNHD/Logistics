@@ -10,6 +10,8 @@ spring:
   flyway:
     enabled: false
 firefly:
+  carrier:
+    credential-key: firefly-carrier-test-key-at-least-32-characters
   security:
     enabled: false
   jwt:

@@ -57,6 +57,11 @@ class WarehouseSecurityTest {
                         .content("{}"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value(403));
+
+        mvc.perform(get("/api/carrier-accounts")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + receiverToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(403));
     }
 
     @Test

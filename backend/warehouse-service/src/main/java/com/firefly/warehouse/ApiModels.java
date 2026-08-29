@@ -2,6 +2,7 @@ package com.firefly.warehouse;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -30,6 +31,15 @@ final class ApiModels {
     record DashboardView(long skuCount, long inventoryQuantity, long todayInboundQuantity, long todayOutboundQuantity,
                          long pendingInboundCount, long pendingOutboundCount, long lowStockCount, long expiringCount,
                          List<Long> inboundTrend, List<Long> outboundTrend, List<ActivityView> recentActivities) {}
+    record CarrierAccountView(Long id, Long warehouseId, String warehouseName, String carrierCode, String accountName,
+                              String apiBaseUrl, String credentialHint, String status, String connectionStatus,
+                              LocalDateTime tokenExpiresAt, LocalDateTime lastSyncedAt, LocalDateTime updatedAt) {}
+    record CarrierOrderView(Long id, Long accountId, String accountName, String carrierCode, String externalOrderNo,
+                            String trackingNo, String recipientRegion, String status, BigDecimal amount,
+                            LocalDateTime placedAt, LocalDateTime syncedAt) {}
+    record CarrierSyncLogView(Long id, Long accountId, String accountName, String carrierCode, String triggerType,
+                              String status, Integer fetchedCount, String message, LocalDateTime startedAt, LocalDateTime finishedAt) {}
+    record CarrierSyncResult(CarrierAccountView account, int fetchedCount) {}
 
     record WarehouseRequest(@NotBlank String code, @NotBlank String name, String address, String manager,
                             @Pattern(regexp = "(?i)ACTIVE|INACTIVE") String status) {}
@@ -48,4 +58,16 @@ final class ApiModels {
     record TransferRequest(@NotNull Long inventoryId, String sourceLocationCode, @NotBlank String targetLocationCode, @NotNull @Positive Long quantity, String reason) {}
     record StocktakeRequest(@NotNull Long inventoryId, @NotNull @PositiveOrZero Long actualQuantity, String reason) {}
     record OutboundRequest(@NotNull Long customerId, @NotNull Long warehouseId, LocalDateTime requiredAt, String remark, @NotEmpty List<@Valid LineRequest> items) {}
+    record CarrierAccountRequest(@NotNull Long warehouseId,
+                                 @NotBlank @Pattern(regexp = "[A-Za-z0-9_-]{2,30}") String carrierCode,
+                                 @NotBlank @Size(max = 100) String accountName,
+                                 @NotBlank @Pattern(regexp = "(?:https://|mock://).+") @Size(max = 500) String apiBaseUrl,
+                                 @NotBlank @Size(max = 500) String credential,
+                                 @Pattern(regexp = "(?i)ACTIVE|INACTIVE") String status,
+                                 LocalDateTime tokenExpiresAt) {}
+    record CarrierAccountUpdateRequest(@NotBlank @Size(max = 100) String accountName,
+                                       @NotBlank @Pattern(regexp = "(?:https://|mock://).+") @Size(max = 500) String apiBaseUrl,
+                                       @Size(max = 500) String credential,
+                                       @Pattern(regexp = "(?i)ACTIVE|INACTIVE") String status,
+                                       LocalDateTime tokenExpiresAt) {}
 }

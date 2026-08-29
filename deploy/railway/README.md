@@ -59,6 +59,7 @@ JWT_SECRET=<与 auth-service 和 gateway 完全一致>
 JWT_ISSUER=firefly-logistics
 JWT_AUDIENCE=firefly-logistics-web
 WAREHOUSE_SECURITY_ENABLED=true
+CARRIER_CREDENTIAL_KEY=<至少 32 字符且独立于 JWT_SECRET 的随机密钥>
 SPRINGDOC_ENABLED=false
 ```
 

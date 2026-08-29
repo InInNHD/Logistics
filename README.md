@@ -1,6 +1,6 @@
 # Firefly Logistics
 
-Firefly Logistics 是一个面向中小型仓库的仓储物流管理系统。当前版本已经形成可运行的“入库 → 库存 → 出库”闭环，并补齐真实用户管理、基于岗位的访问控制、登录保护、库存并发控制、请求幂等、数据库分页、库存流水查询、自动化测试与云端部署入口。
+Firefly Logistics 是一个面向中小型仓库的仓储物流管理系统。当前版本已经形成可运行的“入库 → 库存 → 出库”闭环，并加入多快递账号配置、凭证加密、连通测试、订单同步与同步日志，适合演示边远地区快递代理平台的核心后台流程。
 
 ## 已实现能力
 
@@ -15,6 +15,7 @@ Firefly Logistics 是一个面向中小型仓库的仓储物流管理系统。�
 - 单库存维度盘点、认证审计、主动退出令牌撤销和 OpenAPI/Swagger UI。
 - 写操作 `Idempotency-Key` 去重、库存维度悲观锁、单据状态机和数据库约束。
 - 所有主要列表由数据库分页，管理端提供分页、筛选和角色感知菜单。
+- 中通、圆通、韵达、申通、顺丰等快递账号统一管理；AES-GCM 加密凭证，支持手动连通测试、Mock 订单同步和同步日志。
 - 完整 Docker Compose、本机原生启动、Railway 云部署和 GitHub Actions CI。
 
 ## 技术栈
@@ -23,7 +24,7 @@ Firefly Logistics 是一个面向中小型仓库的仓储物流管理系统。�
 | --- | --- |
 | 前端 | Vue 3、TypeScript、Vite、Pinia、Vue Router、Element Plus、Axios、Vitest |
 | 网关与服务 | Java 17、Spring Boot 3.5.6、Spring Cloud 2025.0.3、Spring Cloud Gateway |
-| 安全 | Spring Security、BCrypt、JWT HS256、岗位 RBAC |
+| 安全 | Spring Security、BCrypt、JWT HS256、AES-GCM、岗位 RBAC |
 | 数据 | Spring Data JPA、Hibernate、Flyway、MySQL 8 |
 | 交付 | Docker Compose、Caddy、Railway、GitHub Actions |
 | 测试 | JUnit、Spring Boot Test、H2、Testcontainers、Vitest |
@@ -86,6 +87,8 @@ docker compose up --build -d
 | --- | :---: | :---: | :---: | :---: |
 | 用户、角色管理 | ✓ |  |  |  |
 | 仓储数据只读查询 | ✓ | ✓ | ✓ | ✓ |
+| 快递账号配置与同步日志 | ✓ | ✓ |  |  |
+| 聚合快递订单查询 | ✓ | ✓ | ✓ | ✓ |
 | 基础资料、库存调整与移库 | ✓ | ✓ |  |  |
 | 入库建单与收货 | ✓ | ✓ | ✓ |  |
 | 出库建单、分配与发运 | ✓ | ✓ |  | ✓ |
@@ -101,7 +104,7 @@ docker compose up --build -d
 ## 数据库迁移
 
 - 认证服务：`V1` 创建用户表，`V2` 增加失败次数和锁定时间，`V3` 增加管理员集合并发保护锁。
-- 仓储服务默认迁移：`V1` 创建核心结构，`V3` 增加幂等表、索引、外键和数量/状态检查约束。
+- 仓储服务默认迁移：`V1` 创建核心结构，`V3` 增加幂等表和约束，`V4` 增加快递账号、聚合订单和同步日志。
 - 演示数据仅由 `demo` Profile 加载：`db/demo/V2` 提供基础资料，可重复迁移 `R__seed_public_orders.sql` 提供 8 张 UCI CC BY 4.0 真实匿名零售订单及中通、圆通、韵达、申通、顺丰服务商资料；Railway `prod` 不播种演示数据。
 - 两个服务使用独立的 Flyway 历史表；后启动的一方会写入版本 `0` 的基线标记，然后仍从 V1 执行自己的迁移。V0 不是业务迁移，也不会跳过 V1；迁移只能追加，不能修改已经执行的版本。
 
@@ -109,7 +112,7 @@ docker compose up --build -d
 
 ## 生产安全要求
 
-- 使用 `prod` Profile，并为 auth-service、gateway、warehouse-service 注入完全相同的唯一 `JWT_SECRET`（至少 32 字节）、`JWT_ISSUER`、`JWT_AUDIENCE`，同时为认证服务设置强 `ADMIN_PASSWORD`。生产 Profile 会拒绝文档中的开发密钥和默认管理员密码。
+- 使用 `prod` Profile，并为三个服务注入相同的唯一 `JWT_SECRET`（至少 32 字节）、`JWT_ISSUER`、`JWT_AUDIENCE`，为认证服务设置强 `ADMIN_PASSWORD`，为仓储服务单独设置唯一 `CARRIER_CREDENTIAL_KEY`（至少 32 字符）。生产 Profile 会拒绝文档中的开发密钥和默认管理员密码。
 - 若管理员已通过外部流程创建，设置 `ADMIN_BOOTSTRAP_ENABLED=false`；任何环境都不得提交 `.env`、令牌或云端凭据。
 - 只公开 HTTPS 前端入口；网关、认证、仓储和数据库走私有网络。
 - 配置数据库最小权限账号、自动备份与恢复演练；生产仓储服务不得启用 `demo` Profile。
@@ -141,4 +144,4 @@ MySQL Testcontainers 迁移测试在 Docker 可用时自动执行，无 Docker �
 
 ## 路线图
 
-后续重点是质检与独立上架任务、部分发运/部分退货、多人盘点单与范围冻结、多货主与序列号、PDA/条码/标签、波次与补货、仓库级数据范围，以及集中告警、审计保留策略和消息事件。当前版本适合开发、课程设计和受控中小规模试运行；完成容量验证、备份恢复演练与组织级安全评审前不应直接作为无人值守的大规模生产 WMS。
+当前多快递接入处于第一阶段：真实保存账号配置，但同步适配器使用不含个人信息的确定性 Mock 数据。第二阶段计划加入定时任务、失败重试、限流/熔断与多实例锁；第三阶段再实现真实快递适配器、边远地区路由计价、面单轨迹和对账。其余 WMS 路线包括质检上架、部分发运/退货、范围盘点、PDA/条码、波次补货和多货主。

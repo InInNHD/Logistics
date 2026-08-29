@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  Bell, Box, DataAnalysis, Document, Expand, Fold, Goods, House, Operation, Setting, SwitchButton,
+  Bell, Box, Connection, DataAnalysis, Document, Expand, Fold, Goods, House, Operation, Setting, SwitchButton,
   Van,
 } from '@element-plus/icons-vue'
 import FireflyMark from '@/components/FireflyMark.vue'
@@ -39,6 +39,8 @@ async function logout() {
         <router-link v-if="can(['WAREHOUSE_MANAGER','RECEIVER'])" to="/inbound" class="nav-item" @click="closeMobileNav"><el-icon><Box /></el-icon><span>入库管理</span></router-link>
         <router-link v-if="can(['WAREHOUSE_MANAGER','RECEIVER','PICKER'])" to="/inventory" class="nav-item" @click="closeMobileNav"><el-icon><Goods /></el-icon><span>库存管理</span></router-link>
         <router-link v-if="can(['WAREHOUSE_MANAGER','PICKER'])" to="/outbound" class="nav-item" @click="closeMobileNav"><el-icon><Van /></el-icon><span>出库管理</span></router-link>
+        <div v-if="can(['WAREHOUSE_MANAGER','ADMIN'])" class="nav-label"><span>物流集成</span></div>
+        <router-link v-if="can(['WAREHOUSE_MANAGER','ADMIN'])" to="/carrier-integration" class="nav-item" @click="closeMobileNav"><el-icon><Connection /></el-icon><span>快递集成</span></router-link>
         <div v-if="can(['WAREHOUSE_MANAGER']) || can(['ADMIN'])" class="nav-label"><span>系统配置</span></div>
         <router-link v-if="can(['WAREHOUSE_MANAGER'])" to="/master-data" class="nav-item" @click="closeMobileNav"><el-icon><House /></el-icon><span>基础资料</span></router-link>
         <router-link v-if="can(['ADMIN'])" to="/users" class="nav-item" @click="closeMobileNav"><el-icon><Setting /></el-icon><span>用户与权限</span></router-link>

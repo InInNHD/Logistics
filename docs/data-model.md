@@ -29,6 +29,9 @@ erDiagram
     INVENTORY_BALANCE ||--o{ OUTBOUND_ALLOCATION : reserves
     INVENTORY_BALANCE ||--o{ INVENTORY_MOVEMENT : changes
     IDEMPOTENCY_RECORD }o--|| BUSINESS_OPERATION : protects
+    WAREHOUSE ||--o{ CARRIER_ACCOUNT : configures
+    CARRIER_ACCOUNT ||--o{ CARRIER_ORDER : imports
+    CARRIER_ACCOUNT ||--o{ CARRIER_SYNC_LOG : records
 ```
 
 `ROLE_CODE` 与 `BUSINESS_OPERATION` 是概念节点，不是当前数据库表。
@@ -139,7 +142,17 @@ allocated_quantity + locked_quantity <= quantity
 
 当前未实现自动清理。生产运行前应根据最长客户端重试窗口确定保留期、归档与清理任务；清理前必须确认历史请求不会再被重放。
 
-## 8. 并发控制
+## 8. 多快递集成
+
+| 表 | 作用与关键约束 |
+| --- | --- |
+| `wms_carrier_account` | 仓库下的快递账号；`warehouse_id + carrier_code + account_name` 唯一，凭证使用 AES-GCM 加密并另存脱敏提示 |
+| `wms_carrier_order` | 外部订单快照；`account_id + external_order_no` 唯一，重复同步执行更新而非重复插入 |
+| `wms_carrier_sync_log` | 每次手动/定时同步的触发方式、结果、数量、消息和耗时 |
+
+第一阶段的 `mock://` 适配器每天为每个账号生成 3 张不含姓名、电话和地址的确定性订单，用于验证账号、同步、去重和查询闭环。生产必须单独配置唯一 `CARRIER_CREDENTIAL_KEY`，密钥不能与 JWT 密钥复用；响应和日志均不得输出凭证明文或密文。
+
+## 9. 并发控制
 
 | 资源 | 保护方式 |
 | --- | --- |
@@ -153,7 +166,7 @@ allocated_quantity + locked_quantity <= quantity
 
 一次库存事务必须原子完成“余额更新＋流水追加＋单据/分配状态更新”。应用捕获重复键并转换为稳定冲突结果；数据库仍是最终一致性防线。
 
-## 9. 分页与索引
+## 10. 分页与索引
 
 以下列表使用 Spring Data `Page` 和数据库查询，而不是先 `findAll()` 再在内存截取：用户、仓库、货位、商品、合作方、入库单、库存余额、库存流水和出库单。用户页大小上限为 100，仓储页上限为 200，并使用批量 `findAllById`/明细 fetch 查询补齐关联显示字段。
 
@@ -168,7 +181,7 @@ V3 新增或强化的索引包括：
 
 生产数据增长后仍需用慢查询和 `EXPLAIN` 验证；关键字包含查询可能需要全文检索或专用搜索服务。
 
-## 10. Flyway 迁移与 Demo 数据
+## 11. Flyway 迁移与 Demo 数据
 
 认证服务使用 `flyway_auth_schema_history`：
 
@@ -182,14 +195,14 @@ V3 新增或强化的索引包括：
 
 仓储服务使用 `flyway_warehouse_schema_history`：
 
-- 默认 location `classpath:db/migration`：`V1` 核心结构和 `V3` 幂等/约束强化；
+- 默认 location `classpath:db/migration`：`V1` 核心结构、`V3` 幂等/约束强化和 `V4` 多快递集成；
 - `demo` Profile 额外加入 `classpath:db/demo`，其中 `V2__seed_demo_master_data.sql` 插入演示仓库、货位、商品、合作方和库存；
 - `demo/R__seed_public_orders.sql` 以可重复、幂等方式加入 8 张 UCI Online Retail II 真实匿名交易、40 条商品明细和国内快递服务商资料。订单来源为 [UCI Online Retail II](https://archive.ics.uci.edu/dataset/502/online%2Bretail)（DOI `10.24432/C5CG6D`，CC BY 4.0）；仅平移演示时间和分配 WMS 状态，原始发票号、时间、国家和金额保留在备注中；
 - `application-demo.yml` 负责组合这两个 locations；完整 Docker Compose 明确启用 `demo`，默认/`prod` 不会播种演示数据。
 
 国内物流服务供应商的全国客服热线来自各公司官网：中通 `95311`、圆通 `95554`、韵达 `95546`、申通 `95543`、顺丰 `95338`。它们复用当前合作方 `SUPPLIER` 类型，不包含个人网点或面单信息。
 
-版本号不要求文件在同一目录连续；全新 Demo 模块会在可选 V0 基线之后，按所有已配置 locations 的版本排序执行 `V1 → V2 → V3`。生产必须只扫描默认迁移目录。Demo Profile 应在空库首次迁移前确定：若数据库已经按默认模式执行到 V3，之后才启用 demo，V2 属于低于当前版本的 out-of-order 迁移，默认不会补跑；此时应通过 API 创建数据或使用新的受控高版本 seed，而不是修改 Flyway 历史。
+版本号不要求文件在同一目录连续；全新 Demo 模块会在可选 V0 基线之后，按所有已配置 locations 的版本排序执行 `V1 → V2 → V3 → V4`。生产必须只扫描默认迁移目录。Demo Profile 应在空库首次迁移前确定：若数据库已经按默认模式执行到 V3，之后才启用 demo，V2 属于低于当前版本的 out-of-order 迁移，默认不会补跑；此时应通过 API 创建数据或使用新的受控高版本 seed，而不是修改 Flyway 历史。
 
 ### 旧数据库兼容警告
 
@@ -204,6 +217,6 @@ V3 新增或强化的索引包括：
 
 新建生产库不启用 `demo`，因此不存在这类历史兼容问题。
 
-## 11. 后续模型路线图
+## 12. 后续模型路线图
 
 仍需新增的模型包括质检/上架任务、部分发运/退货、范围盘点与冻结、多货主、序列号、单位换算、库容温区、PDA 扫描记录、仓库数据范围、权限点和 Outbox 事件。当前盘点复用库存余额和流水，适合单维度即时盘点。

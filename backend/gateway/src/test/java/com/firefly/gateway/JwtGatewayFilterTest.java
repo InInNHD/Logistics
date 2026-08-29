@@ -68,6 +68,17 @@ class JwtGatewayFilterTest {
         assertEquals(HttpStatus.FORBIDDEN, exchange.getResponse().getStatusCode());
     }
 
+    @Test void onlyManagersCanReadCarrierAccounts() {
+        var request = MockServerHttpRequest.get("/api/carrier-accounts")
+                .header("Authorization", "Bearer " + token("receiver", "RECEIVER"))
+                .build();
+        var exchange = MockServerWebExchange.from(request);
+
+        filter.filter(exchange, next -> next.getResponse().setComplete()).block();
+
+        assertEquals(HttpStatus.FORBIDDEN, exchange.getResponse().getStatusCode());
+    }
+
     @Test void authenticatedOperatorCanLogout() {
         var request = MockServerHttpRequest.post("/api/auth/logout")
                 .header("Authorization", "Bearer " + token("receiver", "RECEIVER"))

@@ -114,7 +114,8 @@ curl -X POST http://localhost:8080/api/auth/login \
 | API 能力 | `ADMIN` | `WAREHOUSE_MANAGER` | `RECEIVER` | `PICKER` |
 | --- | :---: | :---: | :---: | :---: |
 | `/api/auth/users*`、`/api/auth/roles`、`/api/auth/audit-events` | 读写 |  |  |  |
-| 所有仓储 `GET` 查询 | ✓ | ✓ | ✓ | ✓ |
+| 一般仓储与聚合订单 `GET` 查询 | ✓ | ✓ | ✓ | ✓ |
+| 快递账号与同步日志查询 | ✓ | ✓ |  |  |
 | 基础资料 `POST` | ✓ | ✓ |  |  |
 | `/api/inventory/adjustments`、`/transfers`、`/stocktakes` | ✓ | ✓ |  |  |
 | 入库创建、收货 | ✓ | ✓ | ✓ |  |
@@ -286,6 +287,34 @@ curl -X POST http://localhost:8080/api/inbound-orders/1/receive \
 
 主状态流为 `PENDING → ALLOCATED → PICKED → PACKED → SHIPPED`；待发运状态均可取消并释放预占，已发运订单可整单退回为 `RETURNED`。未指定批次时按 FEFO 分配；已过期库存和停用货位不会参与分配。
 
-## 11. OpenAPI 与待办
+## 11. 多快递集成 API
+
+快递账号配置与同步操作仅 `ADMIN`、`WAREHOUSE_MANAGER` 可用；收货员和拣货员只能查询聚合订单。响应只返回脱敏提示，不返回凭证明文或密文。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET/POST` | `/api/carrier-accounts` | 分页查询或创建快递账号 |
+| `PUT` | `/api/carrier-accounts/{id}` | 更新账号；凭证留空表示保持不变 |
+| `POST` | `/api/carrier-accounts/{id}/test` | 测试账号配置 |
+| `POST` | `/api/carrier-accounts/{id}/sync` | 手动拉取订单并记录日志 |
+| `GET` | `/api/carrier-orders` | 按关键字、快递公司或状态分页查询聚合订单 |
+| `GET` | `/api/carrier-sync-logs` | 按账号分页查询同步日志 |
+
+创建账号示例：
+
+```json
+{
+  "warehouseId": 1,
+  "carrierCode": "SF",
+  "accountName": "顺丰沙箱账号",
+  "apiBaseUrl": "mock://sf",
+  "credential": "your-token-or-app-secret",
+  "status": "ACTIVE"
+}
+```
+
+第一阶段仅支持 `mock://` 确定性适配器，每次同步生成或更新当天 3 张匿名演示订单，重复同步不会重复插入。真实公网 Token 不应填入演示环境；第二阶段完成重试、限流和调度后再接真实沙箱 API。
+
+## 12. OpenAPI 与待办
 
 认证和仓储服务启用 `SPRINGDOC_ENABLED=true` 时分别在内部端口提供 `/swagger-ui.html` 与 `/v3/api-docs`。生产建议关闭交互 UI。当前 URL 尚未加入版本段；正式对外集成前应冻结契约并迁移到 `/api/v1/**`。质检/上架、部分发运、范围冻结、部分退货、PDA、条码和波次相关接口仍未实现。

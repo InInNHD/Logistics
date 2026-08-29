@@ -33,6 +33,7 @@ $script:AllowedEnvironment = @{
     MYSQL_USER = $true; MYSQL_PASSWORD = $true
     DB_URL = $true; DB_USERNAME = $true; DB_PASSWORD = $true
     JWT_SECRET = $true; JWT_TTL_HOURS = $true; JWT_ISSUER = $true; JWT_AUDIENCE = $true
+    CARRIER_CREDENTIAL_KEY = $true
     WAREHOUSE_SECURITY_ENABLED = $true
     ADMIN_BOOTSTRAP_ENABLED = $true; ADMIN_USERNAME = $true; ADMIN_PASSWORD = $true
     LOGIN_MAX_FAILURES = $true; LOGIN_LOCK_MINUTES = $true
@@ -146,7 +147,7 @@ function Restore-Environment {
 }
 
 function Invoke-WithoutApplicationSecrets([scriptblock]$Action) {
-    $secretNames = @('DB_PASSWORD', 'MYSQL_PASSWORD', 'MYSQL_ROOT_PASSWORD', 'MYSQL_PWD', 'JWT_SECRET', 'ADMIN_PASSWORD')
+    $secretNames = @('DB_PASSWORD', 'MYSQL_PASSWORD', 'MYSQL_ROOT_PASSWORD', 'MYSQL_PWD', 'JWT_SECRET', 'CARRIER_CREDENTIAL_KEY', 'ADMIN_PASSWORD')
     $original = @{}
     try {
         foreach ($name in $secretNames) {
@@ -179,8 +180,9 @@ function New-SanitizedJavaEnvironment {
     foreach ($name in @('PORT', 'SPRING_APPLICATION_JSON', 'SPRING_CONFIG_LOCATION', 'SPRING_CONFIG_ADDITIONAL_LOCATION',
             'SPRING_CONFIG_IMPORT', 'SPRING_PROFILES_ACTIVE', 'SPRING_DATASOURCE_URL', 'SPRING_DATASOURCE_USERNAME',
             'SPRING_DATASOURCE_PASSWORD', 'SPRING_FLYWAY_LOCATIONS', 'SPRING_FLYWAY_OUT_OF_ORDER', 'SPRING_FLYWAY_ENABLED',
-            'SPRING_FLYWAY_TABLE', 'JAVA_TOOL_OPTIONS', '_JAVA_OPTIONS', 'JDK_JAVA_OPTIONS', 'MYSQL_ROOT_PASSWORD', 'MYSQL_PWD')) {
-        $environment[$name] = $null
+            'SPRING_FLYWAY_TABLE', 'JAVA_TOOL_OPTIONS', '_JAVA_OPTIONS', 'JDK_JAVA_OPTIONS', 'MYSQL_ROOT_PASSWORD', 'MYSQL_PWD',
+            'CARRIER_CREDENTIAL_KEY')) {
+        if ($null -ne [Environment]::GetEnvironmentVariable($name, 'Process')) { $environment[$name] = $null }
     }
     return $environment
 }
@@ -405,7 +407,7 @@ function Invoke-MySql(
     $info.RedirectStandardInput = $true
     $info.RedirectStandardOutput = $true
     $info.RedirectStandardError = $true
-    foreach ($secretName in @('DB_PASSWORD', 'MYSQL_PASSWORD', 'MYSQL_ROOT_PASSWORD', 'JWT_SECRET', 'ADMIN_PASSWORD')) {
+    foreach ($secretName in @('DB_PASSWORD', 'MYSQL_PASSWORD', 'MYSQL_ROOT_PASSWORD', 'JWT_SECRET', 'CARRIER_CREDENTIAL_KEY', 'ADMIN_PASSWORD')) {
         $info.EnvironmentVariables.Remove($secretName)
     }
     $info.EnvironmentVariables['MYSQL_PWD'] = $Password
@@ -584,7 +586,7 @@ function Assert-DatabaseMode(
     }
 
     Assert-FlywayHistory $MySqlExe $DbHost $DbPort $Database $Username $Password 'flyway_auth_schema_history' 'sys_' @('', '1', '1,2', '1,2,3', '1,2,3,4', '1,2,3,4,5', '0,1', '0,1,2', '0,1,2,3', '0,1,2,3,4', '0,1,2,3,4,5')
-    $warehouseAllowed = if ($DataMode -eq 'Demo') { @('', '1', '1,2', '1,2,3', '0,1', '0,1,2', '0,1,2,3') } else { @('', '1', '1,3', '0,1', '0,1,3') }
+    $warehouseAllowed = if ($DataMode -eq 'Demo') { @('', '1', '1,2', '1,2,3', '1,2,3,4', '0,1', '0,1,2', '0,1,2,3', '0,1,2,3,4') } else { @('', '1', '1,3', '1,3,4', '0,1', '0,1,3', '0,1,3,4') }
     $warehouseRepeatables = if ($DataMode -eq 'Demo') { @('seed public orders') } else { @() }
     Assert-FlywayHistory $MySqlExe $DbHost $DbPort $Database $Username $Password 'flyway_warehouse_schema_history' 'wms_' $warehouseAllowed $warehouseRepeatables
 }
@@ -774,13 +776,15 @@ try {
     Assert-PortsAvailable @($gatewayPort, $authPort, $warehousePort, $frontendPort)
 
     $jwtSecret = Get-EnvValue 'JWT_SECRET'
+    $carrierCredentialKey = Get-EnvValue 'CARRIER_CREDENTIAL_KEY'
     $adminPassword = Get-EnvValue 'ADMIN_PASSWORD'
     $knownJwt = @('change-me-to-at-least-32-random-characters', 'firefly-logistics-change-this-jwt-secret-in-production')
-    $usesDevDefaults = ($knownJwt -contains $jwtSecret) -or $adminPassword -eq 'Firefly@123'
+    $usesDevDefaults = ($knownJwt -contains $jwtSecret) -or $carrierCredentialKey -eq 'firefly-carrier-demo-key-change-in-production' -or $adminPassword -eq 'Firefly@123'
     if ($usesDevDefaults -and (-not $AllowDevDefaults -or $DataMode -ne 'Demo')) {
-        throw '检测到示例 JWT 或管理员密码。仅可显式使用 -DataMode Demo -AllowDevDefaults，并且脚本只绑定回环地址。'
+        throw '检测到示例 JWT、快递凭证密钥或管理员密码。仅可显式使用 -DataMode Demo -AllowDevDefaults，并且脚本只绑定回环地址。'
     }
     if ($jwtSecret.Length -lt 32) { throw 'JWT_SECRET 至少需要 32 个字符。' }
+    if ($carrierCredentialKey.Length -lt 32) { throw 'CARRIER_CREDENTIAL_KEY 至少需要 32 个字符。' }
 
     Save-EnvironmentValue 'SERVER_ADDRESS' '127.0.0.1'
     Save-EnvironmentValue 'CORS_ALLOWED_ORIGINS' "http://127.0.0.1:$frontendPort"
@@ -890,6 +894,14 @@ try {
 
     New-Item -ItemType Directory -Path $script:RunLogDir -Force | Out-Null
     $javaEnvironment = New-SanitizedJavaEnvironment
+    foreach ($name in @('DB_URL', 'DB_USERNAME', 'DB_PASSWORD', 'JWT_SECRET', 'JWT_TTL_HOURS',
+            'JWT_ISSUER', 'JWT_AUDIENCE', 'WAREHOUSE_SECURITY_ENABLED', 'AUTH_SERVICE_URL',
+            'WAREHOUSE_SERVICE_URL', 'TOKEN_STATUS_CHECK_ENABLED', 'SPRINGDOC_ENABLED',
+            'CORS_ALLOWED_ORIGINS', 'ADMIN_BOOTSTRAP_ENABLED', 'ADMIN_USERNAME', 'ADMIN_PASSWORD',
+            'LOGIN_MAX_FAILURES', 'LOGIN_LOCK_MINUTES')) {
+        $value = [Environment]::GetEnvironmentVariable($name, 'Process')
+        if ($null -ne $value) { $javaEnvironment[$name] = $value }
+    }
 
     Write-Step '启动认证服务'
     $authProcess = Start-ManagedProcess 'auth-service' $javaExe @('-Duser.timezone=Asia/Shanghai', '-jar', $authJar, "--server.address=127.0.0.1", "--server.port=$authPort", '--spring.profiles.active=local', '--spring.flyway.enabled=true', '--spring.flyway.out-of-order=false', '--spring.flyway.baseline-on-migrate=true', '--spring.flyway.baseline-version=0', '--spring.flyway.locations=classpath:db/migration') (Join-Path $script:ProjectRoot 'backend') $javaEnvironment $authJar
@@ -903,12 +915,15 @@ try {
     $warehouseArguments += '--firefly.security.enabled=true'
     $warehouseEnvironment = $javaEnvironment.Clone()
     $warehouseEnvironment['ADMIN_PASSWORD'] = $null
+    $warehouseEnvironment['CARRIER_CREDENTIAL_KEY'] = $carrierCredentialKey
     $warehouseProcess = Start-ManagedProcess 'warehouse-service' $javaExe $warehouseArguments (Join-Path $script:ProjectRoot 'backend') $warehouseEnvironment $warehouseJar
     Wait-Health '仓储服务' "http://127.0.0.1:$warehousePort/actuator/health" $warehouseProcess
 
     Write-Step '启动 API 网关'
     $gatewayEnvironment = $javaEnvironment.Clone()
-    foreach ($secretName in @('DB_PASSWORD', 'MYSQL_PASSWORD', 'ADMIN_PASSWORD')) { $gatewayEnvironment[$secretName] = $null }
+    foreach ($name in @('DB_URL', 'DB_USERNAME', 'DB_PASSWORD', 'MYSQL_PASSWORD', 'ADMIN_USERNAME', 'ADMIN_PASSWORD')) {
+        $gatewayEnvironment[$name] = $null
+    }
     $gatewayProcess = Start-ManagedProcess 'gateway' $javaExe @('-Duser.timezone=Asia/Shanghai', '-jar', $gatewayJar, '--server.address=127.0.0.1', "--server.port=$gatewayPort", '--spring.profiles.active=local') (Join-Path $script:ProjectRoot 'backend') $gatewayEnvironment $gatewayJar
     Wait-Health 'API 网关' "http://127.0.0.1:$gatewayPort/actuator/health" $gatewayProcess
 

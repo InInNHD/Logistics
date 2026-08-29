@@ -9,6 +9,7 @@ const labelMap: Record<string, string> = {
   RECEIVING: '收货中', PARTIALLY_RECEIVED: '部分收货', RECEIVED: '已收货', COMPLETED: '已完成', CANCELLED: '已取消',
   ALLOCATED: '已分配', PICKING: '拣货中', PICKED: '已拣货', PACKED: '已包装',
   SHIPPED: '已发运', RETURNED: '已退货', PARTIAL: '部分完成', LOCKED: '已冻结',
+  UNTESTED: '未测试', AVAILABLE: '可用', FAILED: '失败', IN_TRANSIT: '运输中', SIGNED: '已签收', SUCCESS: '成功',
 }
 
 const typeMap: Record<string, 'success' | 'warning' | 'info' | 'danger' | 'primary'> = {
@@ -16,6 +17,7 @@ const typeMap: Record<string, 'success' | 'warning' | 'info' | 'danger' | 'prima
   PENDING: 'warning', RECEIVING: 'warning', PARTIALLY_RECEIVED: 'warning', PICKING: 'warning', PARTIAL: 'warning',
   DRAFT: 'info', CREATED: 'info', ALLOCATED: 'primary', PICKED: 'primary', PACKED: 'primary',
   RETURNED: 'info', CANCELLED: 'danger', DISABLED: 'danger', INACTIVE: 'danger', LOCKED: 'danger',
+  UNTESTED: 'info', AVAILABLE: 'success', FAILED: 'danger', IN_TRANSIT: 'primary', SIGNED: 'success', SUCCESS: 'success',
 }
 
 const normalized = computed(() => (props.status || 'UNKNOWN').toUpperCase())

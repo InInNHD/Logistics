@@ -320,3 +320,68 @@ export interface ActivityItem {
   time: string
   type?: 'inbound' | 'outbound' | 'inventory' | 'system'
 }
+
+export interface CarrierAccount {
+  id: number
+  warehouseId: number
+  warehouseName: string
+  carrierCode: string
+  accountName: string
+  apiBaseUrl: string
+  credentialHint: string
+  status: string
+  connectionStatus: string
+  tokenExpiresAt?: string
+  lastSyncedAt?: string
+  updatedAt?: string
+}
+
+export interface CreateCarrierAccountRequest {
+  warehouseId: number
+  carrierCode: string
+  accountName: string
+  apiBaseUrl: string
+  credential: string
+  status: string
+  tokenExpiresAt?: string
+}
+
+export interface UpdateCarrierAccountRequest {
+  accountName: string
+  apiBaseUrl: string
+  credential?: string
+  status: string
+  tokenExpiresAt?: string
+}
+
+export interface CarrierOrder {
+  id: number
+  accountId: number
+  accountName: string
+  carrierCode: string
+  externalOrderNo: string
+  trackingNo?: string
+  recipientRegion?: string
+  status: string
+  amount: number
+  placedAt?: string
+  syncedAt: string
+}
+
+export interface CarrierSyncLog {
+  id: number
+  accountId: number
+  accountName: string
+  carrierCode: string
+  triggerType: string
+  status: string
+  fetchedCount: number
+  message?: string
+  startedAt: string
+  finishedAt: string
+}
+
+export interface CarrierSyncResult {
+  account: CarrierAccount
+  fetchedCount: number
+}

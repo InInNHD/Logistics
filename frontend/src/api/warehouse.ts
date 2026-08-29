@@ -20,6 +20,12 @@ import type {
   InventoryTransferRequest,
   InventoryStocktakeRequest,
   ReceiveInboundRequest,
+  CarrierAccount,
+  CarrierOrder,
+  CarrierSyncLog,
+  CarrierSyncResult,
+  CreateCarrierAccountRequest,
+  UpdateCarrierAccountRequest,
 } from '@/types'
 
 type Query = Record<string, string | number | boolean | undefined>
@@ -86,4 +92,16 @@ export const warehouseApi = {
     unwrap<OutboundOrder>(await http.post(`/outbound-orders/${id}/cancel`, {}, idempotencyConfig(idempotencyKey))),
   returnOutbound: async (id: number, idempotencyKey?: string) =>
     unwrap<OutboundOrder>(await http.post(`/outbound-orders/${id}/return`, {}, idempotencyConfig(idempotencyKey))),
+
+  carrierAccounts: (params?: Query) => getPage<CarrierAccount>('/carrier-accounts', params),
+  createCarrierAccount: async (payload: CreateCarrierAccountRequest) =>
+    unwrap<CarrierAccount>(await http.post('/carrier-accounts', payload)),
+  updateCarrierAccount: async (id: number, payload: UpdateCarrierAccountRequest) =>
+    unwrap<CarrierAccount>(await http.put(`/carrier-accounts/${id}`, payload)),
+  testCarrierAccount: async (id: number) =>
+    unwrap<CarrierAccount>(await http.post(`/carrier-accounts/${id}/test`)),
+  syncCarrierAccount: async (id: number) =>
+    unwrap<CarrierSyncResult>(await http.post(`/carrier-accounts/${id}/sync`)),
+  carrierOrders: (params?: Query) => getPage<CarrierOrder>('/carrier-orders', params),
+  carrierSyncLogs: (params?: Query) => getPage<CarrierSyncLog>('/carrier-sync-logs', params),
 }

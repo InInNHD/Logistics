@@ -21,6 +21,8 @@ spring:
     baseline-on-migrate: true
     baseline-version: 0
 firefly:
+  carrier:
+    credential-key: ${CARRIER_CREDENTIAL_KEY:}
   security:
     enabled: ${WAREHOUSE_SECURITY_ENABLED:true}
   jwt:

@@ -69,6 +69,8 @@ class JwtGatewayFilter implements GlobalFilter, Ordered {
         if (path.startsWith("/actuator/")) return false;
         if (path.startsWith("/api/auth/users") || path.equals("/api/auth/roles")
                 || path.equals("/api/auth/audit-events")) return false;
+        if (HttpMethod.GET.equals(method) && (path.equals("/api/carrier-accounts")
+                || path.equals("/api/carrier-sync-logs"))) return "WAREHOUSE_MANAGER".equals(role);
         if (HttpMethod.GET.equals(method)) return true;
         if ("WAREHOUSE_MANAGER".equals(role)) return path.startsWith("/api/") && !path.startsWith("/api/auth/");
         if ("RECEIVER".equals(role) && HttpMethod.POST.equals(method)) {

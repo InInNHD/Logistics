@@ -67,6 +67,7 @@ interface CarrierAccountRepository extends JpaRepository<CarrierAccountEntity, L
 
 interface CarrierOrderRepository extends JpaRepository<CarrierOrderEntity, Long> {
     Optional<CarrierOrderEntity> findByAccountIdAndExternalOrderNo(Long accountId, String externalOrderNo);
+    List<CarrierOrderEntity> findByPlacedAtGreaterThanEqualAndPlacedAtLessThan(LocalDateTime from, LocalDateTime to);
 
     @Query(value = """
             select o from CarrierOrderEntity o, CarrierAccountEntity a

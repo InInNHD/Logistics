@@ -299,6 +299,9 @@ curl -X POST http://localhost:8080/api/inbound-orders/1/receive \
 | `POST` | `/api/carrier-accounts/{id}/sync` | 手动拉取订单并记录日志 |
 | `GET` | `/api/carrier-orders` | 按关键字、快递公司或状态分页查询聚合订单 |
 | `GET` | `/api/carrier-sync-logs` | 按账号分页查询同步日志 |
+| `POST` | `/api/carrier-quotes` | 按快递公司、目的地和重量试算新疆演示运费 |
+| `GET` | `/api/carrier-orders/{id}/tracking` | 查询订单的演示物流轨迹 |
+| `GET` | `/api/carrier-reconciliation` | 按可选 `from`、`to` 日期汇总快递账单差异 |
 
 创建账号示例：
 
@@ -313,7 +316,7 @@ curl -X POST http://localhost:8080/api/inbound-orders/1/receive \
 }
 ```
 
-第二阶段仍使用 `mock://` 确定性适配器，每次同步生成或更新当天 3 张新疆匿名演示订单，重复同步不会重复插入。账号请求可用 `syncEnabled` 和 `syncIntervalMinutes`（1～1440）配置自动同步；响应包含 `nextSyncAt`、`consecutiveFailures` 和 `circuitOpenedUntil`。手动调用受最小间隔限制，过于频繁或熔断中返回 `429`。真实公网 Token 不应填入演示环境。
+同步仍使用 `mock://` 确定性适配器，每次生成或更新当天 3 张新疆匿名演示订单，重复同步不会重复插入。账号请求可用 `syncEnabled` 和 `syncIntervalMinutes`（1～1440）配置自动同步；响应包含 `nextSyncAt`、`consecutiveFailures` 和 `circuitOpenedUntil`。手动调用受最小间隔限制，过于频繁或熔断中返回 `429`。第三阶段的计价、轨迹和对账同样为演示规则，不代表快递公司官方报价；真实公网 Token 不应填入演示环境。
 
 ## 12. OpenAPI 与待办
 

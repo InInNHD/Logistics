@@ -16,6 +16,10 @@ import java.util.*;
 class CarrierIntegrationService {
     private static final List<String> REGIONS = List.of("新疆 乌鲁木齐", "新疆 伊犁", "新疆 喀什");
     private static final List<String> STATUSES = List.of("CREATED", "IN_TRANSIT", "SIGNED");
+    private static final Map<String, BigDecimal> BASE_FEES = Map.of(
+            "SF", new BigDecimal("22"), "ZTO", new BigDecimal("14"), "YTO", new BigDecimal("13"),
+            "YUNDA", new BigDecimal("13"), "STO", new BigDecimal("13"), "EMS", new BigDecimal("16"),
+            "JD", new BigDecimal("18"), "DEPPON", new BigDecimal("17"));
     private final CarrierAccountRepository accounts;
     private final CarrierOrderRepository orders;
     private final CarrierSyncLogRepository logs;
@@ -146,6 +150,62 @@ class CarrierIntegrationService {
         Page<CarrierSyncLogEntity> result = logs.search(accountId, pageable(page, size));
         Map<Long, CarrierAccountEntity> accountMap = index(accounts.findAllById(result.getContent().stream().map(l -> l.accountId).toList()));
         return page(result, result.getContent().stream().map(l -> logView(l, accountMap.get(l.accountId))).toList());
+    }
+
+    CarrierQuoteView quote(CarrierQuoteRequest request) {
+        return quote(upper(request.carrierCode()), request.destination().trim(), request.weightKg());
+    }
+
+    @Transactional(readOnly = true)
+    CarrierTrackingView tracking(Long id) {
+        CarrierOrderEntity order = orders.findById(id).orElseThrow(() -> WarehouseService.notFound("快递订单不存在"));
+        CarrierAccountEntity account = requireAccount(order.accountId);
+        LocalDateTime placed = order.placedAt == null ? order.createdAt : order.placedAt;
+        List<CarrierTrackingEventView> events = new ArrayList<>();
+        events.add(new CarrierTrackingEventView("CREATED", "订单已揽收", "始发仓", placed));
+        if (!"CREATED".equals(order.status)) {
+            events.add(new CarrierTrackingEventView("IN_TRANSIT", "运输至新疆分拨中心", "乌鲁木齐分拨中心", placed.plusHours(18)));
+        }
+        if ("SIGNED".equals(order.status)) {
+            events.add(new CarrierTrackingEventView("SIGNED", "收件人已签收", order.recipientRegion, placed.plusHours(36)));
+        }
+        return new CarrierTrackingView(order.id, account.carrierCode, order.trackingNo, order.status, events);
+    }
+
+    @Transactional(readOnly = true)
+    List<CarrierReconciliationView> reconciliation(LocalDate from, LocalDate to) {
+        LocalDate end = to == null ? LocalDate.now() : to;
+        LocalDate start = from == null ? end.minusDays(29) : from;
+        if (start.isAfter(end) || start.isBefore(end.minusYears(1))) throw WarehouseService.conflict("对账周期必须在一年内且开始日期不晚于结束日期");
+        List<CarrierOrderEntity> periodOrders = orders.findByPlacedAtGreaterThanEqualAndPlacedAtLessThan(start.atStartOfDay(), end.plusDays(1).atStartOfDay());
+        Map<Long, CarrierAccountEntity> accountMap = index(accounts.findAllById(periodOrders.stream().map(o -> o.accountId).distinct().toList()));
+        Map<String, List<CarrierOrderEntity>> grouped = new TreeMap<>();
+        for (CarrierOrderEntity order : periodOrders) {
+            CarrierAccountEntity account = accountMap.get(order.accountId);
+            if (account != null) grouped.computeIfAbsent(account.carrierCode, ignored -> new ArrayList<>()).add(order);
+        }
+        List<CarrierReconciliationView> result = new ArrayList<>();
+        for (var entry : grouped.entrySet()) {
+            BigDecimal expected = entry.getValue().stream()
+                    .map(o -> quote(entry.getKey(), o.recipientRegion, BigDecimal.ONE).totalFee())
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal billed = entry.getValue().stream().map(o -> o.amount).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal difference = billed.subtract(expected);
+            result.add(new CarrierReconciliationView(entry.getKey(), entry.getValue().size(), expected, billed,
+                    difference, difference.abs().compareTo(BigDecimal.ONE) <= 0 ? "MATCHED" : "REVIEW"));
+        }
+        return result;
+    }
+
+    private static CarrierQuoteView quote(String carrierCode, String destination, BigDecimal weightKg) {
+        BigDecimal base = BASE_FEES.getOrDefault(carrierCode, new BigDecimal("15"));
+        BigDecimal extraWeight = weightKg.subtract(BigDecimal.ONE).max(BigDecimal.ZERO).setScale(0, java.math.RoundingMode.UP);
+        BigDecimal remote = destination.contains("喀什") || destination.contains("和田") || destination.contains("阿勒泰")
+                ? new BigDecimal("8") : new BigDecimal("4");
+        BigDecimal total = base.add(extraWeight.multiply(new BigDecimal("6"))).add(remote).setScale(2);
+        int days = remote.compareTo(new BigDecimal("8")) == 0 ? 5 : 3;
+        return new CarrierQuoteView(carrierCode, destination, weightKg, base.setScale(2), remote.setScale(2), total,
+                days, "新疆经济件（演示规则）");
     }
 
     private CarrierAccountEntity requireAccount(Long id) {

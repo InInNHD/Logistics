@@ -24,6 +24,9 @@ import type {
   CarrierOrder,
   CarrierSyncLog,
   CarrierSyncResult,
+  CarrierQuote,
+  CarrierTracking,
+  CarrierReconciliation,
   CreateCarrierAccountRequest,
   UpdateCarrierAccountRequest,
 } from '@/types'
@@ -104,4 +107,10 @@ export const warehouseApi = {
     unwrap<CarrierSyncResult>(await http.post(`/carrier-accounts/${id}/sync`)),
   carrierOrders: (params?: Query) => getPage<CarrierOrder>('/carrier-orders', params),
   carrierSyncLogs: (params?: Query) => getPage<CarrierSyncLog>('/carrier-sync-logs', params),
+  quoteCarrier: async (payload: { carrierCode: string; destination: string; weightKg: number }) =>
+    unwrap<CarrierQuote>(await http.post('/carrier-quotes', payload)),
+  carrierTracking: async (id: number) =>
+    unwrap<CarrierTracking>(await http.get(`/carrier-orders/${id}/tracking`)),
+  carrierReconciliation: async (params?: Query) =>
+    unwrap<CarrierReconciliation[]>(await http.get('/carrier-reconciliation', { params })),
 }

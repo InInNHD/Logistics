@@ -42,6 +42,13 @@ final class ApiModels {
     record CarrierSyncLogView(Long id, Long accountId, String accountName, String carrierCode, String triggerType,
                               String status, Integer fetchedCount, String message, LocalDateTime startedAt, LocalDateTime finishedAt) {}
     record CarrierSyncResult(CarrierAccountView account, int fetchedCount) {}
+    record CarrierQuoteView(String carrierCode, String destination, BigDecimal weightKg, BigDecimal baseFee,
+                            BigDecimal remoteSurcharge, BigDecimal totalFee, int estimatedDays, String serviceLevel) {}
+    record CarrierTrackingEventView(String status, String description, String location, LocalDateTime occurredAt) {}
+    record CarrierTrackingView(Long orderId, String carrierCode, String trackingNo, String currentStatus,
+                               List<CarrierTrackingEventView> events) {}
+    record CarrierReconciliationView(String carrierCode, long orderCount, BigDecimal expectedAmount,
+                                     BigDecimal billedAmount, BigDecimal differenceAmount, String status) {}
 
     record WarehouseRequest(@NotBlank String code, @NotBlank String name, String address, String manager,
                             @Pattern(regexp = "(?i)ACTIVE|INACTIVE") String status) {}
@@ -74,4 +81,7 @@ final class ApiModels {
                                        @Pattern(regexp = "(?i)ACTIVE|INACTIVE") String status,
                                        LocalDateTime tokenExpiresAt, Boolean syncEnabled,
                                        @Min(1) @Max(1440) Integer syncIntervalMinutes) {}
+    record CarrierQuoteRequest(@NotBlank @Pattern(regexp = "(?i)[A-Za-z0-9_-]{2,30}") String carrierCode,
+                               @NotBlank @Pattern(regexp = "^新疆.{0,116}", message = "目的地仅支持新疆") String destination,
+                               @NotNull @DecimalMin("0.1") @DecimalMax("1000") BigDecimal weightKg) {}
 }

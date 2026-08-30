@@ -394,3 +394,38 @@ export interface CarrierSyncResult {
   account: CarrierAccount
   fetchedCount: number
 }
+
+export interface CarrierQuote {
+  carrierCode: string
+  destination: string
+  weightKg: number
+  baseFee: number
+  remoteSurcharge: number
+  totalFee: number
+  estimatedDays: number
+  serviceLevel: string
+}
+
+export interface CarrierTrackingEvent {
+  status: string
+  description: string
+  location: string
+  occurredAt: string
+}
+
+export interface CarrierTracking {
+  orderId: number
+  carrierCode: string
+  trackingNo: string
+  currentStatus: string
+  events: CarrierTrackingEvent[]
+}
+
+export interface CarrierReconciliation {
+  carrierCode: string
+  orderCount: number
+  expectedAmount: number
+  billedAmount: number
+  differenceAmount: number
+  status: string
+}

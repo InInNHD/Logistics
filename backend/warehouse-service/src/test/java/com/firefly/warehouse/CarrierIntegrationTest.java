@@ -55,6 +55,19 @@ class CarrierIntegrationTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(3));
         mvc.perform(get("/api/carrier-sync-logs").param("accountId", String.valueOf(accountId)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.total").value(2));
+
+        String orderResponse = mvc.perform(get("/api/carrier-orders").param("keyword", "沙箱账号-" + suffix))
+                .andReturn().getResponse().getContentAsString();
+        long orderId = mapper.readTree(orderResponse).path("data").path("records").get(0).path("id").asLong();
+        mvc.perform(get("/api/carrier-orders/{id}/tracking", orderId))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.events").isArray())
+                .andExpect(jsonPath("$.data.events[0].status").value("CREATED"));
+        mvc.perform(post("/api/carrier-quotes").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"carrierCode\":\"SF\",\"destination\":\"新疆 喀什\",\"weightKg\":2.5}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.totalFee").value(42.0))
+                .andExpect(jsonPath("$.data.estimatedDays").value(5));
+        mvc.perform(get("/api/carrier-reconciliation"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data").isArray());
     }
 
     @Test

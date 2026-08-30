@@ -4,6 +4,7 @@ import com.firefly.common.api.ApiResponse;
 import com.firefly.warehouse.ApiModels.*;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
+import java.time.LocalDate;
 
 @RestController
 @RequestMapping("/api")
@@ -54,5 +55,21 @@ class CarrierIntegrationController {
             @RequestParam(required = false) Long accountId,
             @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size) {
         return ApiResponse.ok(service.logs(accountId, page, size));
+    }
+
+    @PostMapping("/carrier-quotes")
+    ApiResponse<CarrierQuoteView> quote(@Valid @RequestBody CarrierQuoteRequest request) {
+        return ApiResponse.ok(service.quote(request));
+    }
+
+    @GetMapping("/carrier-orders/{id}/tracking")
+    ApiResponse<CarrierTrackingView> tracking(@PathVariable Long id) {
+        return ApiResponse.ok(service.tracking(id));
+    }
+
+    @GetMapping("/carrier-reconciliation")
+    ApiResponse<java.util.List<CarrierReconciliationView>> reconciliation(
+            @RequestParam(required = false) LocalDate from, @RequestParam(required = false) LocalDate to) {
+        return ApiResponse.ok(service.reconciliation(from, to));
     }
 }

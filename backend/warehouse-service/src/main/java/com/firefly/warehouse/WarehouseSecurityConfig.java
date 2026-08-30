@@ -78,7 +78,8 @@ class WarehouseSecurityConfig {
                         .requestMatchers(HttpMethod.POST,
                                 "/api/warehouses", "/api/locations", "/api/products", "/api/partners",
                                 "/api/inventory/adjustments", "/api/inventory/transfers", "/api/inventory/stocktakes",
-                                "/api/carrier-accounts", "/api/carrier-accounts/*/test", "/api/carrier-accounts/*/sync")
+                                "/api/carrier-accounts", "/api/carrier-accounts/*/test", "/api/carrier-accounts/*/sync",
+                                "/api/carrier-quotes")
                                 .hasAnyRole("ADMIN", "WAREHOUSE_MANAGER")
                         .requestMatchers(HttpMethod.PUT, "/api/carrier-accounts/*")
                                 .hasAnyRole("ADMIN", "WAREHOUSE_MANAGER")

@@ -313,7 +313,7 @@ curl -X POST http://localhost:8080/api/inbound-orders/1/receive \
 }
 ```
 
-第一阶段仅支持 `mock://` 确定性适配器，每次同步生成或更新当天 3 张匿名演示订单，重复同步不会重复插入。真实公网 Token 不应填入演示环境；第二阶段完成重试、限流和调度后再接真实沙箱 API。
+第二阶段仍使用 `mock://` 确定性适配器，每次同步生成或更新当天 3 张新疆匿名演示订单，重复同步不会重复插入。账号请求可用 `syncEnabled` 和 `syncIntervalMinutes`（1～1440）配置自动同步；响应包含 `nextSyncAt`、`consecutiveFailures` 和 `circuitOpenedUntil`。手动调用受最小间隔限制，过于频繁或熔断中返回 `429`。真实公网 Token 不应填入演示环境。
 
 ## 12. OpenAPI 与待办
 

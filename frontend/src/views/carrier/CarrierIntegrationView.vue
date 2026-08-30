@@ -28,11 +28,12 @@ const pagination = reactive<Record<TabName, ReturnType<typeof createPagination>>
 })
 const form = reactive({
   id: 0, warehouseId: 0, carrierCode: 'SF', accountName: '', apiBaseUrl: 'mock://sf-express',
-  credential: '', status: 'ACTIVE', tokenExpiresAt: '',
+  credential: '', status: 'ACTIVE', tokenExpiresAt: '', syncEnabled: false, syncIntervalMinutes: 30,
 })
 
 const carrierName = (code: string) => carriers.find(([value]) => value === code)?.[1] || code
 const dateTime = (value?: string) => value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—'
+const triggerName = (value: string) => value === 'SCHEDULED' ? '定时' : '手动'
 
 async function load() {
   loading.value = true
@@ -55,10 +56,12 @@ function resetForm(account?: CarrierAccount) {
   Object.assign(form, account ? {
     id: account.id, warehouseId: account.warehouseId, carrierCode: account.carrierCode,
     accountName: account.accountName, apiBaseUrl: account.apiBaseUrl, credential: '', status: account.status,
-    tokenExpiresAt: account.tokenExpiresAt || '',
+    tokenExpiresAt: account.tokenExpiresAt || '', syncEnabled: account.syncEnabled,
+    syncIntervalMinutes: account.syncIntervalMinutes,
   } : {
     id: 0, warehouseId: warehouses.value[0]?.id || 0, carrierCode: 'SF', accountName: '',
     apiBaseUrl: 'mock://sf-express', credential: '', status: 'ACTIVE', tokenExpiresAt: '',
+    syncEnabled: false, syncIntervalMinutes: 30,
   })
   dialogVisible.value = true
 }
@@ -72,12 +75,14 @@ async function submit() {
       await warehouseApi.updateCarrierAccount(form.id, {
         accountName: form.accountName, apiBaseUrl: form.apiBaseUrl,
         credential: form.credential || undefined, status: form.status, tokenExpiresAt: form.tokenExpiresAt || undefined,
+        syncEnabled: form.syncEnabled, syncIntervalMinutes: form.syncIntervalMinutes,
       })
     } else {
       await warehouseApi.createCarrierAccount({
         warehouseId: form.warehouseId, carrierCode: form.carrierCode, accountName: form.accountName,
         apiBaseUrl: form.apiBaseUrl, credential: form.credential, status: form.status,
         tokenExpiresAt: form.tokenExpiresAt || undefined,
+        syncEnabled: form.syncEnabled, syncIntervalMinutes: form.syncIntervalMinutes,
       })
     }
     ElMessage.success(form.id ? '快递账号已更新' : '快递账号已创建')
@@ -115,7 +120,7 @@ onMounted(async () => {
     <PageHeader eyebrow="CARRIER HUB" title="快递集成" description="统一管理快递账号、外部订单与同步运行记录">
       <el-button v-if="activeTab==='accounts'" type="primary" :icon="Plus" @click="resetForm()">新增快递账号</el-button>
     </PageHeader>
-    <el-alert title="阶段一使用 Mock 适配器验证完整链路，不会访问真实快递网站；凭证已使用 AES-GCM 加密保存。" type="info" show-icon :closable="false" class="phase-alert" />
+    <el-alert title="阶段二已启用定时同步、失败重试、MySQL 多实例租约和熔断保护；当前仍使用 Mock 适配器，不访问真实快递网站。" type="info" show-icon :closable="false" class="phase-alert" />
     <section class="surface-card table-card">
       <el-tabs v-model="activeTab">
         <el-tab-pane label="快递账号" name="accounts" />
@@ -139,6 +144,8 @@ onMounted(async () => {
         <el-table-column prop="credentialHint" label="凭证" width="110"><template #default="s"><span class="mono">{{ s.row.credentialHint }}</span></template></el-table-column>
         <el-table-column label="账号状态" width="100"><template #default="s"><StatusTag :status="s.row.status" /></template></el-table-column>
         <el-table-column label="连接状态" width="110"><template #default="s"><StatusTag :status="s.row.connectionStatus" /></template></el-table-column>
+        <el-table-column label="自动同步" width="110"><template #default="s">{{ s.row.syncEnabled ? `${s.row.syncIntervalMinutes} 分钟` : '关闭' }}</template></el-table-column>
+        <el-table-column label="连续失败" width="90" prop="consecutiveFailures" align="right" />
         <el-table-column label="最近同步" width="180"><template #default="s">{{ dateTime(s.row.lastSyncedAt) }}</template></el-table-column>
         <el-table-column label="操作" fixed="right" width="240">
           <template #default="s">
@@ -163,7 +170,7 @@ onMounted(async () => {
       <el-table v-else v-loading="loading" :data="logs" stripe>
         <el-table-column label="快递公司" width="130"><template #default="s">{{ carrierName(s.row.carrierCode) }}</template></el-table-column>
         <el-table-column prop="accountName" label="账号" min-width="170" />
-        <el-table-column prop="triggerType" label="触发方式" width="110"><template #default>手动</template></el-table-column>
+        <el-table-column prop="triggerType" label="触发方式" width="110"><template #default="s">{{ triggerName(s.row.triggerType) }}</template></el-table-column>
         <el-table-column label="结果" width="100"><template #default="s"><StatusTag :status="s.row.status" /></template></el-table-column>
         <el-table-column prop="fetchedCount" label="订单数" width="90" align="right" />
         <el-table-column prop="message" label="说明" min-width="280" />
@@ -184,6 +191,8 @@ onMounted(async () => {
           <el-form-item label="账号状态"><el-select v-model="form.status" style="width:100%"><el-option label="启用" value="ACTIVE" /><el-option label="停用" value="INACTIVE" /></el-select></el-form-item>
           <el-form-item class="full" label="接口地址" required><el-input v-model="form.apiBaseUrl" /></el-form-item>
           <el-form-item class="full" :label="form.id?'访问凭证（留空则不修改）':'访问凭证'" :required="!form.id"><el-input v-model="form.credential" type="password" show-password autocomplete="new-password" /></el-form-item>
+          <el-form-item label="自动同步"><el-switch v-model="form.syncEnabled" inline-prompt active-text="启" inactive-text="关" /></el-form-item>
+          <el-form-item label="同步间隔（分钟）"><el-input-number v-model="form.syncIntervalMinutes" :min="1" :max="1440" :disabled="!form.syncEnabled" style="width:100%" /></el-form-item>
           <el-form-item class="full" label="Token 到期时间"><el-date-picker v-model="form.tokenExpiresAt" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" placeholder="可选" style="width:100%" /></el-form-item>
         </div>
       </el-form>

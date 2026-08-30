@@ -146,11 +146,11 @@ allocated_quantity + locked_quantity <= quantity
 
 | 表 | 作用与关键约束 |
 | --- | --- |
-| `wms_carrier_account` | 仓库下的快递账号；`warehouse_id + carrier_code + account_name` 唯一，凭证使用 AES-GCM 加密并另存脱敏提示 |
+| `wms_carrier_account` | 仓库下的快递账号；凭证使用 AES-GCM 加密；保存自动同步间隔、下次执行、租约、连续失败与熔断截止时间 |
 | `wms_carrier_order` | 外部订单快照；`account_id + external_order_no` 唯一，重复同步执行更新而非重复插入 |
 | `wms_carrier_sync_log` | 每次手动/定时同步的触发方式、结果、数量、消息和耗时 |
 
-第一阶段的 `mock://` 适配器每天为每个账号生成 3 张不含姓名、电话和地址的确定性订单，用于验证账号、同步、去重和查询闭环。生产必须单独配置唯一 `CARRIER_CREDENTIAL_KEY`，密钥不能与 JWT 密钥复用；响应和日志均不得输出凭证明文或密文。
+第二阶段的 `mock://` 适配器每天为每个账号生成 3 张仅含新疆区域且不含姓名、电话和地址的确定性订单。调度实例先用条件更新领取账号租约；成功后设置下次执行时间并清零失败，最终失败则累计次数并可能打开熔断。生产必须单独配置唯一 `CARRIER_CREDENTIAL_KEY`；响应、同步日志和异步事件均不得输出凭证明文或密文。
 
 ## 9. 并发控制
 
@@ -195,14 +195,14 @@ V3 新增或强化的索引包括：
 
 仓储服务使用 `flyway_warehouse_schema_history`：
 
-- 默认 location `classpath:db/migration`：`V1` 核心结构、`V3` 幂等/约束强化和 `V4` 多快递集成；
+- 默认 location `classpath:db/migration`：`V1` 核心结构、`V3` 幂等/约束强化、`V4` 多快递集成和 `V5` 同步韧性；
 - `demo` Profile 额外加入 `classpath:db/demo`，其中 `V2__seed_demo_master_data.sql` 插入演示仓库、货位、商品、合作方和库存；
 - `demo/R__seed_public_orders.sql` 以可重复、幂等方式加入 8 张 UCI Online Retail II 真实匿名交易、40 条商品明细和国内快递服务商资料。订单来源为 [UCI Online Retail II](https://archive.ics.uci.edu/dataset/502/online%2Bretail)（DOI `10.24432/C5CG6D`，CC BY 4.0）；仅平移演示时间和分配 WMS 状态，原始发票号、时间、国家和金额保留在备注中；
 - `application-demo.yml` 负责组合这两个 locations；完整 Docker Compose 明确启用 `demo`，默认/`prod` 不会播种演示数据。
 
 国内物流服务供应商的全国客服热线来自各公司官网：中通 `95311`、圆通 `95554`、韵达 `95546`、申通 `95543`、顺丰 `95338`。它们复用当前合作方 `SUPPLIER` 类型，不包含个人网点或面单信息。
 
-版本号不要求文件在同一目录连续；全新 Demo 模块会在可选 V0 基线之后，按所有已配置 locations 的版本排序执行 `V1 → V2 → V3 → V4`。生产必须只扫描默认迁移目录。Demo Profile 应在空库首次迁移前确定：若数据库已经按默认模式执行到 V3，之后才启用 demo，V2 属于低于当前版本的 out-of-order 迁移，默认不会补跑；此时应通过 API 创建数据或使用新的受控高版本 seed，而不是修改 Flyway 历史。
+版本号不要求文件在同一目录连续；全新 Demo 模块会在可选 V0 基线之后按 `V1 → V2 → V3 → V4 → V5` 执行。生产必须只扫描默认迁移目录。Demo Profile 应在空库首次迁移前确定：若数据库已经执行到更高版本后才启用 demo，低版本 V2 默认不会补跑。
 
 ### 旧数据库兼容警告
 

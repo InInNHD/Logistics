@@ -9,7 +9,11 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api")
 class CarrierIntegrationController {
     private final CarrierIntegrationService service;
-    CarrierIntegrationController(CarrierIntegrationService service) { this.service = service; }
+    private final CarrierSyncCoordinator coordinator;
+    CarrierIntegrationController(CarrierIntegrationService service, CarrierSyncCoordinator coordinator) {
+        this.service = service;
+        this.coordinator = coordinator;
+    }
 
     @GetMapping("/carrier-accounts")
     ApiResponse<PageResult<CarrierAccountView>> accounts(
@@ -35,7 +39,7 @@ class CarrierIntegrationController {
 
     @PostMapping("/carrier-accounts/{id}/sync")
     ApiResponse<CarrierSyncResult> sync(@PathVariable Long id) {
-        return ApiResponse.ok("订单同步完成", service.sync(id));
+        return ApiResponse.ok("订单同步完成", coordinator.manual(id));
     }
 
     @GetMapping("/carrier-orders")

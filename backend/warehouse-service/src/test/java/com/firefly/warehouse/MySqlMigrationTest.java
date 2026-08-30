@@ -18,7 +18,7 @@ class MySqlMigrationTest {
             .withPassword("firefly_test_password");
 
     @Test
-    void migratesEmptyMySqlDatabaseThroughWarehouseVersionFour() {
+    void migratesEmptyMySqlDatabaseThroughWarehouseVersionFive() {
         Flyway flyway = Flyway.configure()
                 .dataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword())
                 .table("flyway_warehouse_schema_history")
@@ -27,6 +27,6 @@ class MySqlMigrationTest {
 
         var result = flyway.migrate();
         assertTrue(result.success);
-        assertEquals("4", flyway.info().current().getVersion().getVersion());
+        assertEquals("5", flyway.info().current().getVersion().getVersion());
     }
 }

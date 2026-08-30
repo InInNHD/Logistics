@@ -34,6 +34,11 @@ $script:AllowedEnvironment = @{
     DB_URL = $true; DB_USERNAME = $true; DB_PASSWORD = $true
     JWT_SECRET = $true; JWT_TTL_HOURS = $true; JWT_ISSUER = $true; JWT_AUDIENCE = $true
     CARRIER_CREDENTIAL_KEY = $true
+    CARRIER_SYNC_SCHEDULER_ENABLED = $true; CARRIER_SYNC_SCHEDULER_DELAY_MS = $true
+    CARRIER_SYNC_BATCH_SIZE = $true; CARRIER_SYNC_LEASE_MINUTES = $true
+    CARRIER_SYNC_MAX_ATTEMPTS = $true; CARRIER_SYNC_RETRY_DELAY_MS = $true
+    CARRIER_SYNC_MANUAL_COOLDOWN_SECONDS = $true; CARRIER_SYNC_CIRCUIT_THRESHOLD = $true
+    CARRIER_SYNC_CIRCUIT_COOLDOWN_MINUTES = $true
     WAREHOUSE_SECURITY_ENABLED = $true
     ADMIN_BOOTSTRAP_ENABLED = $true; ADMIN_USERNAME = $true; ADMIN_PASSWORD = $true
     LOGIN_MAX_FAILURES = $true; LOGIN_LOCK_MINUTES = $true
@@ -586,7 +591,7 @@ function Assert-DatabaseMode(
     }
 
     Assert-FlywayHistory $MySqlExe $DbHost $DbPort $Database $Username $Password 'flyway_auth_schema_history' 'sys_' @('', '1', '1,2', '1,2,3', '1,2,3,4', '1,2,3,4,5', '0,1', '0,1,2', '0,1,2,3', '0,1,2,3,4', '0,1,2,3,4,5')
-    $warehouseAllowed = if ($DataMode -eq 'Demo') { @('', '1', '1,2', '1,2,3', '1,2,3,4', '0,1', '0,1,2', '0,1,2,3', '0,1,2,3,4') } else { @('', '1', '1,3', '1,3,4', '0,1', '0,1,3', '0,1,3,4') }
+    $warehouseAllowed = if ($DataMode -eq 'Demo') { @('', '1', '1,2', '1,2,3', '1,2,3,4', '1,2,3,4,5', '0,1', '0,1,2', '0,1,2,3', '0,1,2,3,4', '0,1,2,3,4,5') } else { @('', '1', '1,3', '1,3,4', '1,3,4,5', '0,1', '0,1,3', '0,1,3,4', '0,1,3,4,5') }
     $warehouseRepeatables = if ($DataMode -eq 'Demo') { @('seed public orders') } else { @() }
     Assert-FlywayHistory $MySqlExe $DbHost $DbPort $Database $Username $Password 'flyway_warehouse_schema_history' 'wms_' $warehouseAllowed $warehouseRepeatables
 }
@@ -789,6 +794,8 @@ try {
     Save-EnvironmentValue 'SERVER_ADDRESS' '127.0.0.1'
     Save-EnvironmentValue 'CORS_ALLOWED_ORIGINS' "http://127.0.0.1:$frontendPort"
     Save-EnvironmentValue 'WAREHOUSE_SECURITY_ENABLED' 'true'
+    Save-EnvironmentValue 'TOKEN_STATUS_CHECK_ENABLED' (Get-EnvValue 'TOKEN_STATUS_CHECK_ENABLED' 'true')
+    Save-EnvironmentValue 'SPRINGDOC_ENABLED' (Get-EnvValue 'SPRINGDOC_ENABLED' 'true')
     Save-EnvironmentValue 'AUTH_SERVICE_URL' "http://127.0.0.1:$authPort"
     Save-EnvironmentValue 'WAREHOUSE_SERVICE_URL' "http://127.0.0.1:$warehousePort"
     Save-EnvironmentValue 'VITE_API_BASE_URL' "http://127.0.0.1:$gatewayPort/api"
@@ -898,9 +905,12 @@ try {
             'JWT_ISSUER', 'JWT_AUDIENCE', 'WAREHOUSE_SECURITY_ENABLED', 'AUTH_SERVICE_URL',
             'WAREHOUSE_SERVICE_URL', 'TOKEN_STATUS_CHECK_ENABLED', 'SPRINGDOC_ENABLED',
             'CORS_ALLOWED_ORIGINS', 'ADMIN_BOOTSTRAP_ENABLED', 'ADMIN_USERNAME', 'ADMIN_PASSWORD',
-            'LOGIN_MAX_FAILURES', 'LOGIN_LOCK_MINUTES')) {
+            'LOGIN_MAX_FAILURES', 'LOGIN_LOCK_MINUTES', 'CARRIER_SYNC_SCHEDULER_ENABLED',
+            'CARRIER_SYNC_SCHEDULER_DELAY_MS', 'CARRIER_SYNC_BATCH_SIZE', 'CARRIER_SYNC_LEASE_MINUTES',
+            'CARRIER_SYNC_MAX_ATTEMPTS', 'CARRIER_SYNC_RETRY_DELAY_MS', 'CARRIER_SYNC_MANUAL_COOLDOWN_SECONDS',
+            'CARRIER_SYNC_CIRCUIT_THRESHOLD', 'CARRIER_SYNC_CIRCUIT_COOLDOWN_MINUTES')) {
         $value = [Environment]::GetEnvironmentVariable($name, 'Process')
-        if ($null -ne $value) { $javaEnvironment[$name] = $value }
+        if (-not [string]::IsNullOrWhiteSpace($value)) { $javaEnvironment[$name] = $value }
     }
 
     Write-Step '启动认证服务'

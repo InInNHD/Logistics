@@ -333,6 +333,11 @@ export interface CarrierAccount {
   connectionStatus: string
   tokenExpiresAt?: string
   lastSyncedAt?: string
+  syncEnabled: boolean
+  syncIntervalMinutes: number
+  nextSyncAt?: string
+  consecutiveFailures: number
+  circuitOpenedUntil?: string
   updatedAt?: string
 }
 
@@ -344,6 +349,8 @@ export interface CreateCarrierAccountRequest {
   credential: string
   status: string
   tokenExpiresAt?: string
+  syncEnabled: boolean
+  syncIntervalMinutes: number
 }
 
 export interface UpdateCarrierAccountRequest {
@@ -352,6 +359,8 @@ export interface UpdateCarrierAccountRequest {
   credential?: string
   status: string
   tokenExpiresAt?: string
+  syncEnabled: boolean
+  syncIntervalMinutes: number
 }
 
 export interface CarrierOrder {

@@ -14,7 +14,7 @@ import java.util.*;
 
 @Service
 class CarrierIntegrationService {
-    private static final List<String> REGIONS = List.of("新疆 乌鲁木齐", "西藏 拉萨", "新疆 喀什");
+    private static final List<String> REGIONS = List.of("新疆 乌鲁木齐", "新疆 伊犁", "新疆 喀什");
     private static final List<String> STATUSES = List.of("CREATED", "IN_TRANSIT", "SIGNED");
     private final CarrierAccountRepository accounts;
     private final CarrierOrderRepository orders;
@@ -46,6 +46,7 @@ class CarrierIntegrationService {
         setCredential(account, request.credential());
         account.status = status(request.status());
         account.tokenExpiresAt = request.tokenExpiresAt();
+        applySchedule(account, request.syncEnabled(), request.syncIntervalMinutes());
         return accountView(save(account), warehouse);
     }
 
@@ -58,6 +59,7 @@ class CarrierIntegrationService {
         account.status = status(request.status());
         account.tokenExpiresAt = request.tokenExpiresAt();
         account.connectionStatus = "UNTESTED";
+        applySchedule(account, request.syncEnabled(), request.syncIntervalMinutes());
         return accountView(save(account), warehouses.findById(account.warehouseId).orElseThrow());
     }
 
@@ -66,12 +68,16 @@ class CarrierIntegrationService {
         CarrierAccountEntity account = requireActive(id);
         String credential = cipher.decrypt(account.credentialCiphertext);
         account.connectionStatus = credential.isBlank() ? "FAILED" : "AVAILABLE";
+        if (!credential.isBlank()) {
+            account.consecutiveFailures = 0;
+            account.circuitOpenedUntil = null;
+            if (account.syncEnabled && account.nextSyncAt == null) account.nextSyncAt = LocalDateTime.now();
+        }
         return accountView(account, warehouses.findById(account.warehouseId).orElseThrow());
     }
 
     @Transactional
-    CarrierSyncResult sync(Long id) {
-        // ponytail: 第一阶段仅支持单实例手动同步；多实例定时同步时再引入账号级分布式锁。
+    CarrierSyncResult syncOnce(Long id, String triggerType) {
         CarrierAccountEntity account = requireActive(id);
         if (cipher.decrypt(account.credentialCiphertext).isBlank()) throw WarehouseService.conflict("快递凭证无效");
         LocalDateTime started = LocalDateTime.now();
@@ -91,9 +97,13 @@ class CarrierIntegrationService {
         }
         account.connectionStatus = "AVAILABLE";
         account.lastSyncedAt = started;
+        account.consecutiveFailures = 0;
+        account.circuitOpenedUntil = null;
+        account.leaseUntil = null;
+        account.nextSyncAt = account.syncEnabled ? started.plusMinutes(account.syncIntervalMinutes) : null;
         CarrierSyncLogEntity log = new CarrierSyncLogEntity();
         log.accountId = account.id;
-        log.triggerType = "MANUAL";
+        log.triggerType = triggerType;
         log.status = "SUCCESS";
         log.fetchedCount = 3;
         log.message = "Mock 适配器同步完成，重复订单已更新而非新增";
@@ -101,6 +111,27 @@ class CarrierIntegrationService {
         log.finishedAt = LocalDateTime.now();
         logs.save(log);
         return new CarrierSyncResult(accountView(account, warehouses.findById(account.warehouseId).orElseThrow()), 3);
+    }
+
+    @Transactional
+    void recordFailure(Long id, String triggerType, int attempts, int threshold, int cooldownMinutes, String failureType) {
+        CarrierAccountEntity account = requireAccount(id);
+        LocalDateTime now = LocalDateTime.now();
+        account.connectionStatus = "FAILED";
+        account.consecutiveFailures++;
+        account.leaseUntil = null;
+        if (account.consecutiveFailures >= threshold) account.circuitOpenedUntil = now.plusMinutes(cooldownMinutes);
+        account.nextSyncAt = account.circuitOpenedUntil != null
+                ? account.circuitOpenedUntil : now.plusMinutes(account.syncIntervalMinutes);
+        CarrierSyncLogEntity log = new CarrierSyncLogEntity();
+        log.accountId = id;
+        log.triggerType = triggerType;
+        log.status = "FAILED";
+        log.fetchedCount = 0;
+        log.message = "同步失败，已尝试 " + attempts + " 次（" + failureType + "）";
+        log.startedAt = now;
+        log.finishedAt = now;
+        logs.save(log);
     }
 
     @Transactional(readOnly = true)
@@ -133,6 +164,13 @@ class CarrierIntegrationService {
         account.credentialHint = CredentialCipher.hint(value);
     }
 
+    private static void applySchedule(CarrierAccountEntity account, Boolean enabled, Integer intervalMinutes) {
+        account.syncEnabled = Boolean.TRUE.equals(enabled);
+        account.syncIntervalMinutes = intervalMinutes == null ? 30 : intervalMinutes;
+        account.nextSyncAt = account.syncEnabled ? LocalDateTime.now() : null;
+        account.leaseUntil = null;
+    }
+
     private CarrierAccountEntity save(CarrierAccountEntity account) {
         try { return accounts.saveAndFlush(account); }
         catch (DataIntegrityViolationException e) { throw WarehouseService.conflict("同一仓库下的快递账号已存在"); }
@@ -140,7 +178,9 @@ class CarrierIntegrationService {
 
     private CarrierAccountView accountView(CarrierAccountEntity a, WarehouseEntity w) {
         return new CarrierAccountView(a.id, a.warehouseId, w == null ? "未知仓库" : w.name, a.carrierCode, a.accountName,
-                a.apiBaseUrl, a.credentialHint, a.status, a.connectionStatus, a.tokenExpiresAt, a.lastSyncedAt, a.updatedAt);
+                a.apiBaseUrl, a.credentialHint, a.status, a.connectionStatus, a.tokenExpiresAt, a.lastSyncedAt,
+                a.syncEnabled, a.syncIntervalMinutes, a.nextSyncAt, a.consecutiveFailures,
+                a.circuitOpenedUntil, a.updatedAt);
     }
 
     private CarrierOrderView orderView(CarrierOrderEntity o, CarrierAccountEntity a) {

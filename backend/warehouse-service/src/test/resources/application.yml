@@ -12,6 +12,8 @@ spring:
 firefly:
   carrier:
     credential-key: firefly-carrier-test-key-at-least-32-characters
+    scheduler-enabled: false
+    manual-min-interval-seconds: 0
   security:
     enabled: false
   jwt:

@@ -16,6 +16,12 @@ class CarrierAccountEntity extends BaseEntity {
     @Column(nullable = false, length = 20) String connectionStatus = "UNTESTED";
     LocalDateTime tokenExpiresAt;
     LocalDateTime lastSyncedAt;
+    @Column(nullable = false) Boolean syncEnabled = false;
+    @Column(nullable = false) Integer syncIntervalMinutes = 30;
+    LocalDateTime nextSyncAt;
+    LocalDateTime leaseUntil;
+    @Column(nullable = false) Integer consecutiveFailures = 0;
+    LocalDateTime circuitOpenedUntil;
     protected CarrierAccountEntity() {}
 }
 

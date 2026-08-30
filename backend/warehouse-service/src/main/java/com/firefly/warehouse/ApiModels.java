@@ -33,7 +33,9 @@ final class ApiModels {
                          List<Long> inboundTrend, List<Long> outboundTrend, List<ActivityView> recentActivities) {}
     record CarrierAccountView(Long id, Long warehouseId, String warehouseName, String carrierCode, String accountName,
                               String apiBaseUrl, String credentialHint, String status, String connectionStatus,
-                              LocalDateTime tokenExpiresAt, LocalDateTime lastSyncedAt, LocalDateTime updatedAt) {}
+                              LocalDateTime tokenExpiresAt, LocalDateTime lastSyncedAt, Boolean syncEnabled,
+                              Integer syncIntervalMinutes, LocalDateTime nextSyncAt, Integer consecutiveFailures,
+                              LocalDateTime circuitOpenedUntil, LocalDateTime updatedAt) {}
     record CarrierOrderView(Long id, Long accountId, String accountName, String carrierCode, String externalOrderNo,
                             String trackingNo, String recipientRegion, String status, BigDecimal amount,
                             LocalDateTime placedAt, LocalDateTime syncedAt) {}
@@ -64,10 +66,12 @@ final class ApiModels {
                                  @NotBlank @Pattern(regexp = "(?:https://|mock://).+") @Size(max = 500) String apiBaseUrl,
                                  @NotBlank @Size(max = 500) String credential,
                                  @Pattern(regexp = "(?i)ACTIVE|INACTIVE") String status,
-                                 LocalDateTime tokenExpiresAt) {}
+                                 LocalDateTime tokenExpiresAt, Boolean syncEnabled,
+                                 @Min(1) @Max(1440) Integer syncIntervalMinutes) {}
     record CarrierAccountUpdateRequest(@NotBlank @Size(max = 100) String accountName,
                                        @NotBlank @Pattern(regexp = "(?:https://|mock://).+") @Size(max = 500) String apiBaseUrl,
                                        @Size(max = 500) String credential,
                                        @Pattern(regexp = "(?i)ACTIVE|INACTIVE") String status,
-                                       LocalDateTime tokenExpiresAt) {}
+                                       LocalDateTime tokenExpiresAt, Boolean syncEnabled,
+                                       @Min(1) @Max(1440) Integer syncIntervalMinutes) {}
 }

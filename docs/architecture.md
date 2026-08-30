@@ -129,6 +129,7 @@ V3 迁移增加状态/创建时间、FEFO、库存流水和幂等记录索引。
 - `V1__create_warehouse_schema.sql`：核心仓储结构；
 - `V3__harden_inventory_and_idempotency.sql`：幂等记录、查询索引、流水外键和数据 CHECK 约束。
 - `V4__add_carrier_integration.sql`：快递账号、聚合订单与同步日志；凭证只保存 AES-GCM 密文。
+- `V5__add_carrier_sync_resilience.sql`：定时配置、原子租约、连续失败、熔断和下次执行时间。
 - `db/demo/V2__seed_demo_master_data.sql`：仅在 `demo` Profile 下加入 Flyway locations；默认与 `prod` 不播种演示数据。
 
 完整 Compose 会为仓储服务启用 `demo` Profile，本机原生或云端 `prod` 默认只扫描 `db/migration`。已执行的迁移不可修改：如果旧数据库已经在 `flyway_warehouse_schema_history` 登记了原默认位置的 V2，升级时会出现 missing/checksum 风险。不要执行 `repair` 掩盖差异；应保留匹配旧历史的构件继续维护该库，或在完成数据备份/迁移后用新库重建。生产库不得启用 `demo`。
@@ -143,4 +144,4 @@ V3 迁移增加状态/创建时间、FEFO、库存流水和幂等记录索引。
 
 生产基线包括 HTTPS、私有服务网络、唯一 JWT 密钥、强管理员密码、关闭不需要的管理员引导、数据库最小权限与备份、日志脱敏、资源限制和告警。`prod` Profile 会拒绝已知开发 JWT 密钥及默认管理员密码。
 
-多快递接入第一阶段使用手动 Mock 同步，避免在基础数据模型稳定前引入 Redis、MQ 和多套第三方 SDK。第二阶段在存在定时同步与多实例部署需求时加入账号级分布式锁、重试、限流和熔断；第三阶段按快递公司逐个接入官方沙箱，并完善边远地区规则、轨迹和对账。其余路线包括质检上架、部分发运/退货、范围盘点、PDA/条码、波次补货、多货主和仓库数据范围。
+多快递接入第二阶段使用数据库原子更新领取限时租约，无需额外 Redis 即可防止多实例重复同步；执行失败最多重试 3 次，连续失败达到阈值后持久化熔断截止时间。异步应用事件仅输出脱敏运行指标。第三阶段按快递公司逐个接入官方沙箱，并完善新疆规则、轨迹和对账。
